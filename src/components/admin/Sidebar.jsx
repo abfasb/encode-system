@@ -1,69 +1,105 @@
-import { useState } from "react"; 
-import { Link } from "react-router-dom"; 
-import { FiHome, FiUser, FiSettings, FiLogOut, FiMenu, FiBook } from "react-icons/fi"; 
-import Logo from '../../assets/DA.png' 
+import { NavLink } from "react-router-dom";
+import {
+  FiHome,
+  FiUser,
+  FiBook,
+  FiMenu,
+} from "react-icons/fi";
+import Logo from "../../assets/DA.png";
+import { Navigate } from "react-router-dom";
 
-export default function Sidebar({ sidebarOpen, setSidebarOpen, activePage, setActivePage }) { 
-    const links = [ 
-      { name: "Dashboard", icon: <FiHome />, key: "dashboard" }, 
-      { name: "Audit", icon: <FiUser />, key: "audit" },
-      { name: "CSOs", icon: <FiBook />, key: "rces" }, 
-    ]; 
-   
-    return ( 
-      <div 
-        className={`bg-white border-r-2 border-green-100 transition-all duration-300 ${ 
-          sidebarOpen ? "w-64" : "w-16" 
-        } flex flex-col shadow-sm`} 
-      > 
-        <div className="flex items-center justify-between p-4 border-b-2 border-green-600 "> 
-          {sidebarOpen && (
-            <div className="flex items-center gap-2">
-              <img src={Logo} alt="DA Logo"  className="w-8 h-8 rounded-full flex items-center justify-center">
-              </img>
-              <h1 className="text-lg font-bold text-green-500">Agriculture</h1>
-            </div>
-          )} 
-          <button 
-            className="p-2 rounded-lg hover:bg-green-500 transition text-white" 
-            onClick={() => setSidebarOpen(!sidebarOpen)} 
-          > 
-            <FiMenu className=" text-green-500 hover:text-white" size={20} /> 
-          </button> 
-        </div> 
-   
-        {/* Navigation Links */} 
-        <nav className="flex-1 mt-6 px-2"> 
-          {links.map((link) => ( 
-            <button 
-              key={link.key} 
-              onClick={() => setActivePage(link.key)} 
-              className={`flex items-center gap-4 px-4 py-3 rounded-lg mx-1 my-2 w-full text-left 
-                transition-all duration-200
-                ${activePage === link.key 
-                  ? "bg-green-600 text-white font-semibold shadow-md transform scale-105" 
-                  : "text-green-800 hover:bg-green-50 hover:text-green-700 hover:shadow-sm"
-                }`} 
-            > 
-              <span className={`text-xl text-center ${activePage === link.key ? "text-white" : "text-green-600"}`}>
-                {link.icon}
-              </span>
-              {sidebarOpen && <span className="text-sm">{link.name}</span>} 
-            </button> 
-          ))} 
-        </nav>
+export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
+  const links = [
+    { name: "Dashboard", icon: <FiHome />, key: "dashboard" },
+    { name: "Audit Logs", icon: <FiUser />, key: "audit" },
+    { name: "CSOs", icon: <FiBook />, key: "cso" }, // make sure route matches
+  ];
 
-        {/* Footer branding */}
+  return (
+    <div
+      className={`
+        bg-white/90 backdrop-blur-md
+        border-r border-green-100/80
+        shadow-[4px_0_25px_-8px_rgba(0,0,0,0.04)]
+        transition-all duration-300
+        flex flex-col h-screen
+        ${sidebarOpen ? "w-72" : "w-20"}
+      `}
+    >
+      {/* HEADER */}
+      <div
+        className={`
+          flex items-center px-4 h-20
+          border-b border-green-100/60
+          ${sidebarOpen ? "justify-between" : "justify-center"}
+        `}
+      >
         {sidebarOpen && (
-          <div className="p-4 border-t border-green-100">
-            <p className="text-xs text-green-600 text-center font-medium">
-              Department of Agriculture
-            </p>
-            <p className="text-xs text-gray-400 text-center mt-1">
-              Dashboard v1.0
-            </p>
+          <div className="flex items-center gap-3">
+            <img
+              src={Logo}
+              alt="DA Logo"
+              className="w-10 h-10 rounded-full object-cover ring-2 ring-white shadow-sm"
+            />
+            <div>
+              <h1 className="text-lg font-bold text-green-700">
+                Agriculture
+              </h1>
+              <p className="text-[10px] text-gray-400 tracking-wider uppercase">
+                Management
+              </p>
+            </div>
           </div>
         )}
-      </div> 
-    ); 
+
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="p-2 rounded-lg bg-green-50 hover:bg-green-100 transition"
+        >
+          <FiMenu className="text-green-600" size={18} />
+        </button>
+      </div>
+
+      {/* NAVIGATION */}
+      <nav className="flex-1 mt-8 px-3 space-y-2">
+        {links.map((link) => (
+          <NavLink
+            key={link.key}
+            to={`/admin/${link.key}`}
+            className={({ isActive }) =>
+              `
+              flex items-center gap-3 px-4 py-3 rounded-xl
+              transition-all duration-200
+              ${
+                isActive
+                  ? "bg-green-600 text-white shadow-md"
+                  : "text-gray-600 hover:bg-green-50"
+              }
+              `
+            }
+          >
+            <span className="text-lg">{link.icon}</span>
+
+            {sidebarOpen && (
+              <span className="text-sm font-medium">
+                {link.name}
+              </span>
+            )}
+          </NavLink>
+        ))}
+      </nav>
+
+      {/* FOOTER */}
+      {sidebarOpen && (
+        <div className="mt-auto p-5 border-t border-green-100/60 text-center">
+          <p className="text-xs font-semibold text-green-700 tracking-wider">
+            DEPARTMENT OF AGRICULTURE
+          </p>
+          <p className="text-[10px] text-gray-400">
+            Dashboard • v1.2.0
+          </p>
+        </div>
+      )}
+    </div>
+  );
 }

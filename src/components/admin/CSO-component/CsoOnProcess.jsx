@@ -566,7 +566,7 @@ const CsoOnProcess = () => {
         }
       };
       const docHeaderStyle = { ...headerStyle, fill: { fgColor: { rgb: "B6D7A8" }, patternType: "solid" } };
-      const basicInfoHeaderStyle = { ...headerStyle, fill: { fgColor: { rgb: "F9CB9C" }, patternType: "solid" } };
+      const basicInfoHeaderStyle = { ...headerStyle, fill: { fgColor: { rgb: "B6D7A8" }, patternType: "solid" } };
       const processHeaderStyle = { ...headerStyle, fill: { fgColor: { rgb: "B6D7A8" }, patternType: "solid" } };
       
       const dateReceiptHeaderStyle = {
@@ -1091,14 +1091,6 @@ const CsoOnProcess = () => {
 
   const columns = [
     {
-      key: 'no',
-      header: 'No.',
-      sortable: true,
-      render: (row) => (
-        <div className="font-mono font-bold text-gray-900">{row.no}</div>
-      )
-    },
-    {
       key: 'association',
       header: 'Association',
       render: (row) => (
@@ -1504,11 +1496,11 @@ const CsoOnProcess = () => {
                   className="w-full px-4 py-2.5 bg-white border border-gray-300 text-black rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">Select Province</option>
-                  <option value="Occidental Mindoro">Occidental Mindoro</option>
-                  <option value="Oriental Mindoro">Oriental Mindoro</option>
-                  <option value="Marinduque">Marinduque</option>
-                  <option value="Palawan">Palawan</option>
-                  <option value="Romblon">Romblon</option>
+                  <option value="OCCIDENTAL MINDORO">Occidental Mindoro</option>
+                  <option value="ORIENTAL MINDORO">Oriental Mindoro</option>
+                  <option value="MARINDUQUE">Marinduque</option>
+                  <option value="PALAWAN">Palawan</option>
+                  <option value="ROMBLON">Romblon</option>
                 </select>
               </div>
               <div>
@@ -2149,7 +2141,6 @@ const CsoOnProcess = () => {
         </div>
       </Modal>
 
-      {/* IMPORT MODAL */}
       <Modal
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
