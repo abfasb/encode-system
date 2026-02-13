@@ -5,6 +5,7 @@ import Dashboard from "../components/admin/Dashboard";
 import AuditLogs from "../components/admin/AuditLogs";
 import CSO from "../components/admin/CSO";
 import { Navigate } from "react-router-dom";
+import UploadCso from "../components/UploadCso";
 
 export default function AdminPage() {
 
@@ -14,6 +15,7 @@ export default function AdminPage() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="audit" element={<AuditLogs />} />
         <Route path="cso" element={<CSO />} />
+        <Route path="upload-cso" element={<UploadCso />} />
         <Route path="*" element={<Navigate to="dashboard" />} />
       </Routes>
     </AdminLayout>

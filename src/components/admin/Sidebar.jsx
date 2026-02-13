@@ -4,6 +4,7 @@ import {
   FiUser,
   FiBook,
   FiMenu,
+  FiCloud,
 } from "react-icons/fi";
 import Logo from "../../assets/DA.png";
 import { Navigate } from "react-router-dom";
@@ -12,7 +13,8 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
   const links = [
     { name: "Dashboard", icon: <FiHome />, key: "dashboard" },
     { name: "Audit Logs", icon: <FiUser />, key: "audit" },
-    { name: "CSOs", icon: <FiBook />, key: "cso" }, // make sure route matches
+    { name: "CSOs", icon: <FiBook />, key: "cso" },
+    { name: "Upload CSOs", icon: <FiCloud />, key: "upload-cso" },
   ];
 
   return (
