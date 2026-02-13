@@ -5,11 +5,8 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
-  setDoc,
   doc,
   query,
-  orderBy,
-  where,
   serverTimestamp
 } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
@@ -43,9 +40,11 @@ import {
   RefreshCw,
   Clock,
   Archive,
-  RotateCcw
+  RotateCcw,
+  Save
 } from 'lucide-react';
 import { db } from '../../../config/firebase';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // ---------- Helper: Format date ----------
 const formatDate = (dateString) => {
@@ -76,7 +75,7 @@ const getArchivedDate = (record) => {
   if (record.date_of_expiration) {
     return new Date(record.date_of_expiration);
   }
-  return new Date(0); // fallback
+  return new Date(0);
 };
 
 // ---------- Helper: Format archived date for display ----------
@@ -85,7 +84,7 @@ const formatArchivedDate = (record) => {
   return date.getTime() === 0 ? 'N/A' : date.toLocaleDateString();
 };
 
-// ---------- DataTable Component (unchanged) ----------
+// ---------- DataTable Component (unchanged but with premium styling) ----------
 const DataTable = ({
   columns,
   data,
@@ -109,21 +108,21 @@ const DataTable = ({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+    <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-100 shadow-xl shadow-gray-200/50 overflow-hidden">
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+          <thead className="bg-gradient-to-r from-red-50 to-orange-50">
             <tr>
               {columns.map((column) => (
                 <th
                   key={column.key}
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
+                  className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-white/50 transition-colors"
                   onClick={() => column.sortable && onSort(column.key)}
                 >
                   <div className="flex items-center space-x-1">
                     <span>{column.header}</span>
                     {column.sortable && sortField === column.key && (
-                      <span className="ml-1">
+                      <span className="ml-1 text-red-600">
                         {sortDirection === 'asc' ? '↑' : '↓'}
                       </span>
                     )}
@@ -137,44 +136,42 @@ const DataTable = ({
               <tr>
                 <td colSpan={columns.length} className="px-6 py-12 text-center">
                   <div className="flex justify-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                    <div className="animate-spin rounded-full h-10 w-10 border-4 border-red-200 border-t-red-600"></div>
                   </div>
-                  <p className="mt-2 text-gray-500">Loading data...</p>
+                  <p className="mt-4 text-gray-500 font-medium">Loading expired records...</p>
                 </td>
               </tr>
             ) : data.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="px-6 py-12 text-center">
+                <td colSpan={columns.length} className="px-6 py-16 text-center">
                   <div className="flex flex-col items-center">
-                    <AlertCircle className="h-12 w-12 text-gray-400 mb-4" />
-                    <p className="text-gray-500 text-lg font-medium">No expired records found</p>
+                    <div className="p-4 bg-red-50 rounded-full mb-4">
+                      <Archive className="h-12 w-12 text-red-400" />
+                    </div>
+                    <p className="text-gray-700 text-lg font-semibold">No expired records found</p>
                     <p className="text-gray-400 mt-1">All CSOs are currently active</p>
                   </div>
                 </td>
               </tr>
             ) : (
-              data.map((row) => (
-                <tr
+              data.map((row, index) => (
+                <motion.tr
                   key={row.id}
-                  className="hover:bg-gray-50 transition-colors"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.03 }}
+                  className="hover:bg-gradient-to-r hover:from-gray-50 hover:to-red-50/30 transition-all cursor-pointer"
+                  onClick={(e) => handleRowClick(row, e)}
                 >
                   {columns.map((column) => (
                     <td
                       key={column.key}
                       className="px-6 py-4 whitespace-nowrap text-sm"
-                      onClick={(e) => {
-                        if (column.key !== 'actions') {
-                          handleRowClick(row, e);
-                        }
-                      }}
-                      style={{
-                        cursor: column.key !== 'actions' ? 'pointer' : 'default'
-                      }}
                     >
                       {column.render ? column.render(row) : row[column.key]}
                     </td>
                   ))}
-                </tr>
+                </motion.tr>
               ))
             )}
           </tbody>
@@ -182,12 +179,12 @@ const DataTable = ({
       </div>
 
       {pagination && data.length > 0 && (
-        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50/50 flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <select
               value={pagination.rowsPerPage}
               onChange={(e) => onRowsPerPageChange(Number(e.target.value))}
-              className="rounded-md border border-gray-300 text-black bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="rounded-lg border border-gray-300 text-gray-700 bg-white px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
             >
               {[5, 10, 25, 50, 100].map((size) => (
                 <option key={size} value={size}>
@@ -196,7 +193,9 @@ const DataTable = ({
               ))}
             </select>
             <span className="text-sm text-gray-700">
-              Showing {pagination.startIndex + 1} to {Math.min(pagination.endIndex, pagination.total)} of {pagination.total} entries
+              Showing <span className="font-semibold">{pagination.startIndex + 1}</span> to{' '}
+              <span className="font-semibold">{Math.min(pagination.endIndex, pagination.total)}</span> of{' '}
+              <span className="font-semibold">{pagination.total}</span> entries
             </span>
           </div>
 
@@ -204,16 +203,16 @@ const DataTable = ({
             <button
               onClick={() => onPageChange(1)}
               disabled={pagination.currentPage === 1}
-              className="p-1.5 rounded-md border border-gray-300 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              className="p-2 rounded-lg border border-gray-300 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition"
             >
-              <ChevronsLeft className="h-4 w-4 text-black" />
+              <ChevronsLeft className="h-4 w-4 text-gray-700" />
             </button>
             <button
               onClick={() => onPageChange(pagination.currentPage - 1)}
               disabled={pagination.currentPage === 1}
-              className="p-1.5 rounded-md border border-gray-300 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              className="p-2 rounded-lg border border-gray-300 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition"
             >
-              <ChevronLeft className="h-4 w-4 text-black" />
+              <ChevronLeft className="h-4 w-4 text-gray-700" />
             </button>
 
             <div className="flex space-x-1">
@@ -233,9 +232,9 @@ const DataTable = ({
                   <button
                     key={pageNum}
                     onClick={() => onPageChange(pageNum)}
-                    className={`w-8 h-8 rounded-md text-sm font-medium ${
+                    className={`w-9 h-9 rounded-lg text-sm font-medium transition ${
                       pagination.currentPage === pageNum
-                        ? 'bg-blue-600 text-white'
+                        ? 'bg-gradient-to-r from-red-600 to-red-500 text-white shadow-md'
                         : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
                     }`}
                   >
@@ -248,16 +247,16 @@ const DataTable = ({
             <button
               onClick={() => onPageChange(pagination.currentPage + 1)}
               disabled={pagination.currentPage === pagination.totalPages}
-              className="p-1.5 rounded-md border border-gray-300 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              className="p-2 rounded-lg border border-gray-300 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition"
             >
-              <ChevronRight className="h-4 w-4 text-black" />
+              <ChevronRight className="h-4 w-4 text-gray-700" />
             </button>
             <button
               onClick={() => onPageChange(pagination.totalPages)}
               disabled={pagination.currentPage === pagination.totalPages}
-              className="p-1.5 rounded-md border border-gray-300 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              className="p-2 rounded-lg border border-gray-300 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition"
             >
-              <ChevronsRight className="h-4 w-4 text-black" />
+              <ChevronsRight className="h-4 w-4 text-gray-700" />
             </button>
           </div>
         </div>
@@ -266,7 +265,7 @@ const DataTable = ({
   );
 };
 
-// ---------- Modal Component (unchanged) ----------
+// ---------- Premium Modal Component (glassmorphism, animated) ----------
 const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   if (!isOpen) return null;
 
@@ -278,36 +277,71 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto bg-black bg-opacity-50">
-      <div className={`relative bg-white rounded-2xl shadow-2xl w-full mx-4 ${sizeClasses[size]}`}>
-        <div className="sticky top-0 bg-white rounded-t-2xl px-6 py-4 border-b border-gray-200 z-10">
-          <div className="flex items-center justify-between">
-            <h3 className="text-2xl font-bold text-gray-900">{title}</h3>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-500 transition-colors p-1"
-            >
-              <X className="h-6 w-6" />
-            </button>
+    <AnimatePresence>
+      <div className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto bg-black/50 backdrop-blur-sm">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          transition={{ duration: 0.2 }}
+          className={`relative bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl w-full mx-4 border border-white/50 ${sizeClasses[size]}`}
+        >
+          <div className="sticky top-0 bg-white/80 backdrop-blur-sm rounded-t-2xl px-6 py-5 border-b border-gray-200/80 z-10">
+            <div className="flex items-center justify-between">
+              <h3 className="text-2xl font-bold bg-gradient-to-r from-red-700 to-red-600 bg-clip-text text-transparent">
+                {title}
+              </h3>
+              <button
+                onClick={onClose}
+                className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-lg hover:bg-gray-100"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
           </div>
-        </div>
-        <div className="max-h-[70vh] overflow-y-auto p-6">
-          {children}
-        </div>
+          <div className="max-h-[70vh] overflow-y-auto p-6">
+            {children}
+          </div>
+        </motion.div>
       </div>
-    </div>
+    </AnimatePresence>
   );
 };
 
+// ---------- Main Component ----------
 const ExpiredCso = () => {
   const [expiredData, setExpiredData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showViewModal, setShowViewModal] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedExpired, setSelectedExpired] = useState(null);
+  const [formData, setFormData] = useState({
+    no: '',
+    name_of_association: '',
+    contact_person: '',
+    position: '',
+    sex_female: false,
+    sex_male: false,
+    contact_number: '',
+    email_address: '',
+    no_of_members: '',
+    address: '',
+    province: '',
+    region: 'MIMAROPA',
+    scope: 'Regional',
+    nature_of_services: '',
+    accreditation_no: '',
+    date_of_issuance: '',
+    date_of_expiration: '',
+    certificate_of_accreditation: ''
+  });
+  const [saving, setSaving] = useState(false);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({
     scope: 'all',
@@ -330,14 +364,13 @@ const ExpiredCso = () => {
     withCertificates: 0
   });
 
-  // ---------- Fetch expired records from cso-expired WITHOUT orderBy (to include documents missing expiredAt) ----------
+  // ---------- Fetch expired records ----------
   const fetchExpiredData = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
 
       const expiredCollection = collection(db, 'cso-expired');
-      // Remove orderBy to ensure all documents are retrieved regardless of missing expiredAt field
       const q = query(expiredCollection);
       const querySnapshot = await getDocs(q);
 
@@ -346,27 +379,21 @@ const ExpiredCso = () => {
         data.push({ id: doc.id, ...doc.data() });
       });
 
-      // Sort in memory: by expiredAt if exists, otherwise by date_of_expiration descending (most recent first)
       data.sort((a, b) => {
         const dateA = getArchivedDate(a);
         const dateB = getArchivedDate(b);
-        return dateB - dateA; // descending
+        return dateB - dateA;
       });
 
       setExpiredData(data);
 
-      // Calculate statistics
       const total = data.length;
       const withCertificates = data.filter(item => item.certificate_of_accreditation).length;
-      
-      // Group by province
       const byProvince = {};
       data.forEach(item => {
         const province = item.province || 'Unknown';
         byProvince[province] = (byProvince[province] || 0) + 1;
       });
-
-      // Average days expired
       let totalDays = 0;
       data.forEach(item => {
         if (item.date_of_expiration) {
@@ -388,27 +415,118 @@ const ExpiredCso = () => {
     fetchExpiredData();
   }, [fetchExpiredData]);
 
-  // ---------- Restore record: move back to cso collection and delete from expired ----------
+  // ---------- Reset form ----------
+  const resetForm = () => {
+    setFormData({
+      no: '',
+      name_of_association: '',
+      contact_person: '',
+      position: '',
+      sex_female: false,
+      sex_male: false,
+      contact_number: '',
+      email_address: '',
+      no_of_members: '',
+      address: '',
+      province: '',
+      region: 'MIMAROPA',
+      scope: 'Regional',
+      nature_of_services: '',
+      accreditation_no: '',
+      date_of_issuance: '',
+      date_of_expiration: '',
+      certificate_of_accreditation: ''
+    });
+  };
+
+  // ---------- Open Add Modal ----------
+  const openAddModal = () => {
+    resetForm();
+    setShowAddModal(true);
+  };
+
+  // ---------- Open Edit Modal ----------
+  const openEditModal = (record) => {
+    setSelectedExpired(record);
+    setFormData({
+      no: record.no || '',
+      name_of_association: record.name_of_association || '',
+      contact_person: record.contact_person || '',
+      position: record.position || '',
+      sex_female: record.sex_female || false,
+      sex_male: record.sex_male || false,
+      contact_number: record.contact_number || '',
+      email_address: record.email_address || '',
+      no_of_members: record.no_of_members || '',
+      address: record.address || '',
+      province: record.province || '',
+      region: record.region || 'MIMAROPA',
+      scope: record.scope || 'Regional',
+      nature_of_services: record.nature_of_services || '',
+      accreditation_no: record.accreditation_no || '',
+      date_of_issuance: record.date_of_issuance || '',
+      date_of_expiration: record.date_of_expiration || '',
+      certificate_of_accreditation: record.certificate_of_accreditation || ''
+    });
+    setShowEditModal(true);
+  };
+
+  // ---------- Handle Save (Add / Update) ----------
+  const handleSaveRecord = async () => {
+    try {
+      setSaving(true);
+      setError('');
+
+      // Prepare data – remove empty strings and convert numbers
+      const dataToSave = {
+        ...formData,
+        no: formData.no ? Number(formData.no) : null,
+        no_of_members: formData.no_of_members ? Number(formData.no_of_members) : null,
+        // Ensure expiredAt is set for new records
+        ...(showAddModal && !formData.expiredAt && { expiredAt: serverTimestamp() })
+      };
+
+      if (showAddModal) {
+        // Create new expired record
+        await addDoc(collection(db, 'cso-expired'), {
+          ...dataToSave,
+          createdAt: serverTimestamp()
+        });
+        setSuccess('Expired record added successfully!');
+      } else if (showEditModal && selectedExpired) {
+        // Update existing expired record – preserve id and system fields
+        const { id, expiredAt, createdAt, ...updateData } = dataToSave;
+        await updateDoc(doc(db, 'cso-expired', selectedExpired.id), updateData);
+        setSuccess('Expired record updated successfully!');
+      }
+
+      setShowAddModal(false);
+      setShowEditModal(false);
+      resetForm();
+      fetchExpiredData();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      console.error('Error saving expired record:', err);
+      setError('Failed to save record. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ---------- Restore record ----------
   const handleRestore = async () => {
     if (!selectedExpired) return;
-
     try {
-      // Remove expiredAt, movedFrom, and id before restoring
       const { expiredAt, movedFrom, id, ...restoreData } = selectedExpired;
-
-      // Add to active cso collection with new document ID
       await addDoc(collection(db, 'cso'), {
         ...restoreData,
         restoredAt: serverTimestamp()
       });
-
-      // Delete from expired collection
       await deleteDoc(doc(db, 'cso-expired', selectedExpired.id));
-
       setSuccess(`${selectedExpired.name_of_association} restored successfully!`);
       setShowRestoreModal(false);
       setSelectedExpired(null);
-      fetchExpiredData(); // refresh
+      fetchExpiredData();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error('Error restoring expired CSO:', err);
@@ -416,9 +534,9 @@ const ExpiredCso = () => {
     }
   };
 
+  // ---------- Permanent Delete ----------
   const handlePermanentDelete = async () => {
     if (!selectedExpired) return;
-
     try {
       await deleteDoc(doc(db, 'cso-expired', selectedExpired.id));
       setSuccess(`${selectedExpired.name_of_association} permanently deleted.`);
@@ -437,14 +555,12 @@ const ExpiredCso = () => {
     setShowViewModal(true);
   };
 
-  // ---------- Open restore confirmation ----------
   const openRestoreModal = (record) => {
     setSelectedExpired(record);
     setShowViewModal(false);
     setShowRestoreModal(true);
   };
 
-  // ---------- Open permanent delete confirmation ----------
   const openDeleteModal = (record) => {
     setSelectedExpired(record);
     setShowViewModal(false);
@@ -459,12 +575,8 @@ const ExpiredCso = () => {
     }));
   };
 
-  // ---------- Filter handlers ----------
   const handleFilterChange = (filterName, value) => {
-    setFilters(prev => ({
-      ...prev,
-      [filterName]: value
-    }));
+    setFilters(prev => ({ ...prev, [filterName]: value }));
     setPagination(prev => ({ ...prev, currentPage: 1 }));
   };
 
@@ -505,12 +617,10 @@ const ExpiredCso = () => {
       filtered = filtered.filter(item => item.province === filters.province);
     }
 
-    // Sorting
     filtered.sort((a, b) => {
       let aValue = a[sortConfig.field];
       let bValue = b[sortConfig.field];
 
-      // Handle special fields
       if (sortConfig.field === 'no') {
         aValue = parseInt(aValue) || 0;
         bValue = parseInt(bValue) || 0;
@@ -543,7 +653,7 @@ const ExpiredCso = () => {
     }));
   }, [filteredData.length, pagination.rowsPerPage]);
 
-  // ---------- Export to Excel with beautiful formatting for expired records ----------
+  // ---------- Export to Excel (unchanged) ----------
   const exportToExcel = async () => {
     try {
       const mimaropaProvinces = [
@@ -604,36 +714,31 @@ const ExpiredCso = () => {
 
       const wb = XLSXStyle.utils.book_new();
 
-      // Styles (different color theme for expired)
       const titleStyle = {
         font: { name: 'Arial', sz: 16, bold: true },
         alignment: { horizontal: "center", vertical: "center" },
-        fill: { fgColor: { rgb: "FEE2E2" }, patternType: "solid" } // light red background
+        fill: { fgColor: { rgb: "FEE2E2" }, patternType: "solid" }
       };
-
       const subtitleStyle = {
         font: { name: 'Arial', sz: 14, italic: true },
         alignment: { horizontal: "center", vertical: "center" },
-        fill: { fgColor: { rgb: "FECACA" }, patternType: "solid" }, // slightly darker red
+        fill: { fgColor: { rgb: "FECACA" }, patternType: "solid" }
       };
-
       const headerStyle = {
         font: { name: 'Arial', sz: 12, bold: true, color: { rgb: "FFFFFF" } },
         alignment: { horizontal: "center", vertical: "center", wrapText: true },
-        fill: { fgColor: { rgb: "B91C1C" }, patternType: "solid" }, // dark red
+        fill: { fgColor: { rgb: "B91C1C" }, patternType: "solid" },
         border: {
           top: { style: "thin" }, bottom: { style: "thin" },
           left: { style: "thin" }, right: { style: "thin" }
         }
       };
-
       const provinceHeaderStyle = {
         font: { name: 'Arial', sz: 14, bold: true },
-        fill: { fgColor: { rgb: "FCA5A5" }, patternType: "solid" }, // light red
+        fill: { fgColor: { rgb: "FCA5A5" }, patternType: "solid" },
         alignment: { horizontal: "left", vertical: "center" },
         border: { top: { style: "medium" }, bottom: { style: "medium" }, left: { style: "medium" }, right: { style: "medium" } }
       };
-
       const dataStyle = {
         font: { name: 'Arial', sz: 11 },
         alignment: { vertical: "center", wrapText: true },
@@ -642,26 +747,21 @@ const ExpiredCso = () => {
           left: { style: "thin" }, right: { style: "thin" }
         }
       };
-
       const linkStyle = {
         ...dataStyle,
         font: { name: 'Arial', sz: 11, color: { rgb: "0563C1" }, underline: true }
       };
-
       const centerStyle = { ...dataStyle, alignment: { horizontal: "center", vertical: "center" } };
 
       const wsData = [];
       const merges = [];
 
-      // Title row
       wsData.push(['LIST OF EXPIRED CIVIL SOCIETY ORGANIZATIONS']);
       wsData.push([`as of ${currentMonth} ${currentYear}`]);
       wsData.push([]);
-
-      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 17 } }); // expanded for extra columns
+      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 17 } });
       merges.push({ s: { r: 1, c: 0 }, e: { r: 1, c: 17 } });
 
-      // Header row
       wsData.push([
         'NO.', 'NAME OF THE ASSOCIATION', 'CONTACT PERSON', 'POSITION',
         'SEX', '',
@@ -670,12 +770,9 @@ const ExpiredCso = () => {
         'DATE OF ISSUANCE', 'DATE OF EXPIRATION', 'CERTIFICATE OF ACCREDITATION',
         'ARCHIVED ON', 'DAYS EXPIRED'
       ]);
-
-      // Sub-header for F/M
       wsData.push(['', '', '', '', 'F', 'M', '', '', '', '', '', '', '', '', '', '', '', '']);
 
-      // Merges for SEX and other columns
-      merges.push({ s: { r: 3, c: 4 }, e: { r: 3, c: 5 } }); // SEX
+      merges.push({ s: { r: 3, c: 4 }, e: { r: 3, c: 5 } });
       [0, 1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17].forEach(col => {
         merges.push({ s: { r: 3, c: col }, e: { r: 4, c: col } });
       });
@@ -717,7 +814,6 @@ const ExpiredCso = () => {
       });
 
       const ws = XLSXStyle.utils.aoa_to_sheet(wsData);
-
       ws['!cols'] = [
         { wch: 8 }, { wch: 40 }, { wch: 25 }, { wch: 20 },
         { wch: 6 }, { wch: 6 },
@@ -725,7 +821,6 @@ const ExpiredCso = () => {
         { wch: 15 }, { wch: 35 }, { wch: 20 }, { wch: 18 },
         { wch: 18 }, { wch: 45 }, { wch: 18 }, { wch: 15 }
       ];
-
       ws['!rows'] = wsData.map((row, i) => {
         if (i === 0) return { hpt: 40 };
         if (i === 1) return { hpt: 35 };
@@ -740,7 +835,6 @@ const ExpiredCso = () => {
           const address = XLSXStyle.utils.encode_cell({ r: R, c: C });
           const cell = ws[address];
           if (!cell) continue;
-
           if (R === 0) cell.s = titleStyle;
           else if (R === 1) cell.s = subtitleStyle;
           else if (R === 3 || R === 4) cell.s = headerStyle;
@@ -770,7 +864,7 @@ const ExpiredCso = () => {
     }
   };
 
-  // ---------- Table Columns ----------
+  // ---------- Table Columns (with Edit action) ----------
   const columns = [
     {
       key: 'no',
@@ -876,6 +970,13 @@ const ExpiredCso = () => {
             <Eye className="h-4 w-4" />
           </button>
           <button
+            onClick={() => openEditModal(row)}
+            className="p-1.5 text-gray-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+            title="Edit Record"
+          >
+            <Edit className="h-4 w-4" />
+          </button>
+          <button
             onClick={() => openRestoreModal(row)}
             className="p-1.5 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
             title="Restore to Active"
@@ -894,48 +995,112 @@ const ExpiredCso = () => {
     }
   ];
 
-  // ---------- Unique provinces for filter ----------
   const provinces = useMemo(() => {
     const uniqueProvinces = [...new Set(expiredData.map(item => item.province).filter(Boolean))];
     return uniqueProvinces.sort();
   }, [expiredData]);
 
+  // ---------- Form Input Component (premium) ----------
+  const FormInput = ({ label, id, type = 'text', value, onChange, required = false, className = '', ...props }) => (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="block text-sm font-medium text-gray-700">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      <input
+        id={id}
+        type={type}
+        value={value}
+        onChange={onChange}
+        className={`w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition text-black ${className}`}
+        {...props}
+      />
+    </div>
+  );
+
+  const FormSelect = ({ label, id, value, onChange, options, required = false }) => (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="block text-sm font-medium text-gray-700">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={onChange}
+        className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-black"
+      >
+        {options.map(opt => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+
+  const FormCheckbox = ({ label, id, checked, onChange }) => (
+    <div className="flex items-center space-x-3">
+      <input
+        id={id}
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+      />
+      <label htmlFor={id} className="text-sm font-medium text-gray-700">
+        {label}
+      </label>
+    </div>
+  );
+
   // ---------- Render ----------
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
-      {/* Header */}
+    <div className="min-h-screen bg-gradient-to-br from-red-50/50 via-white to-orange-50/30 p-4 md:p-6">
+      {/* Header with Add Button */}
       <div className="mb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-gray-900">Expired CSO Records</h1>
-            <p className="text-gray-600 mt-2">
+            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-red-700 to-red-600 bg-clip-text text-transparent">
+              Expired CSO Records
+            </h1>
+            <p className="text-gray-600 mt-2 flex items-center">
+              <Archive className="h-5 w-5 mr-2 text-red-500" />
               Archived Civil Society Organizations with expired accreditation
             </p>
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={openAddModal}
+              className="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-semibold rounded-xl shadow-lg hover:from-emerald-700 hover:to-green-700 transition-all"
+            >
+              <Plus className="h-5 w-5 mr-2" />
+              Add Expired Record
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={exportToExcel}
-              className="inline-flex items-center px-4 py-2.5 bg-red-600 text-white font-semibold rounded-xl shadow-lg hover:bg-red-700 transition-colors"
+              className="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-red-600 to-red-500 text-white font-semibold rounded-xl shadow-lg hover:from-red-700 hover:to-red-600 transition-all"
             >
               <Download className="h-5 w-5 mr-2" />
               Export Excel
-            </button>
-
-            <button
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={fetchExpiredData}
-              className="inline-flex items-center px-4 py-2.5 bg-gray-600 text-white font-semibold rounded-xl shadow-lg hover:bg-gray-700 transition-colors"
+              className="inline-flex items-center px-5 py-2.5 bg-white text-gray-700 font-semibold rounded-xl shadow-lg border border-gray-200 hover:bg-gray-50 transition-all"
             >
               <RefreshCw className="h-5 w-5 mr-2" />
               Refresh
-            </button>
+            </motion.button>
           </div>
         </div>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="bg-red-500 rounded-2xl shadow-xl p-6 text-white">
+        <motion.div whileHover={{ y: -4 }} className="bg-gradient-to-br from-red-500 to-red-600 rounded-2xl shadow-xl p-6 text-white">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-red-100 text-sm font-medium">Total Expired</p>
@@ -948,9 +1113,9 @@ const ExpiredCso = () => {
               {stats.total > 0 ? `${Object.keys(stats.byProvince).length} provinces` : 'No records'}
             </p>
           </div>
-        </div>
+        </motion.div>
 
-        <div className="bg-orange-500 rounded-2xl shadow-xl p-6 text-white">
+        <motion.div whileHover={{ y: -4 }} className="bg-gradient-to-br from-orange-500 to-amber-500 rounded-2xl shadow-xl p-6 text-white">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-orange-100 text-sm font-medium">Avg. Days Expired</p>
@@ -961,9 +1126,9 @@ const ExpiredCso = () => {
           <div className="mt-4 pt-4 border-t border-orange-400">
             <p className="text-orange-100 text-sm">Since expiration</p>
           </div>
-        </div>
+        </motion.div>
 
-        <div className="bg-amber-500 rounded-2xl shadow-xl p-6 text-white">
+        <motion.div whileHover={{ y: -4 }} className="bg-gradient-to-br from-amber-500 to-yellow-500 rounded-2xl shadow-xl p-6 text-white">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-amber-100 text-sm font-medium">With Certificates</p>
@@ -976,9 +1141,9 @@ const ExpiredCso = () => {
               {stats.total > 0 ? `${Math.round((stats.withCertificates / stats.total) * 100)}%` : '0%'}
             </p>
           </div>
-        </div>
+        </motion.div>
 
-        <div className="bg-purple-500 rounded-2xl shadow-xl p-6 text-white">
+        <motion.div whileHover={{ y: -4 }} className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl shadow-xl p-6 text-white">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-purple-100 text-sm font-medium">Top Province</p>
@@ -993,36 +1158,48 @@ const ExpiredCso = () => {
               {Object.entries(stats.byProvince).sort((a,b) => b[1] - a[1])[0]?.[1] || 0} records
             </p>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* Error & Success Messages */}
-      {error && (
-        <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-lg">
-          <div className="flex items-center">
-            <AlertCircle className="h-5 w-5 text-red-500 mr-3" />
-            <div className="text-red-700 font-medium">{error}</div>
-            <button onClick={() => setError('')} className="ml-auto text-red-500 hover:text-red-700">
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-lg"
+          >
+            <div className="flex items-center">
+              <AlertCircle className="h-5 w-5 text-red-500 mr-3 flex-shrink-0" />
+              <div className="text-red-700 font-medium flex-1">{error}</div>
+              <button onClick={() => setError('')} className="text-red-500 hover:text-red-700">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
 
-      {success && (
-        <div className="mb-6 bg-green-50 border-l-4 border-green-500 p-4 rounded-lg">
-          <div className="flex items-center">
-            <Check className="h-5 w-5 text-green-500 mr-3" />
-            <div className="text-green-700 font-medium">{success}</div>
-            <button onClick={() => setSuccess('')} className="ml-auto text-green-500 hover:text-green-700">
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-      )}
+        {success && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="mb-6 bg-green-50 border-l-4 border-green-500 p-4 rounded-lg"
+          >
+            <div className="flex items-center">
+              <Check className="h-5 w-5 text-green-500 mr-3 flex-shrink-0" />
+              <div className="text-green-700 font-medium flex-1">{success}</div>
+              <button onClick={() => setSuccess('')} className="text-green-500 hover:text-green-700">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Search & Filters */}
-      <div className="mb-6 bg-white rounded-2xl shadow-lg p-6">
+      <div className="mb-6 bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-100 p-6">
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1">
             <div className="relative">
@@ -1032,12 +1209,12 @@ const ExpiredCso = () => {
                 placeholder="Search expired records by name, contact, accreditation..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full text-black pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-black"
               />
               {searchTerm && (
                 <button
                   onClick={() => setSearchTerm('')}
-                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-black hover:text-gray-600"
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   <X className="h-5 w-5" />
                 </button>
@@ -1049,7 +1226,7 @@ const ExpiredCso = () => {
             <select
               value={filters.scope}
               onChange={(e) => handleFilterChange('scope', e.target.value)}
-              className="px-4 py-3 text-black bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500"
+              className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-black"
             >
               <option value="all">All Scopes</option>
               <option value="Regional">Regional</option>
@@ -1060,7 +1237,7 @@ const ExpiredCso = () => {
             <select
               value={filters.hasCertificate}
               onChange={(e) => handleFilterChange('hasCertificate', e.target.value)}
-              className="px-4 py-3 text-black bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500"
+              className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-black"
             >
               <option value="all">All Certificates</option>
               <option value="yes">With Certificate</option>
@@ -1070,7 +1247,7 @@ const ExpiredCso = () => {
             <select
               value={filters.province}
               onChange={(e) => handleFilterChange('province', e.target.value)}
-              className="px-4 py-3 text-black bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500"
+              className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-black"
             >
               <option value="all">All Provinces</option>
               {provinces.map(province => (
@@ -1082,9 +1259,10 @@ const ExpiredCso = () => {
 
         <div className="mt-4 flex items-center justify-between">
           <div className="text-gray-600">
-            Showing <span className="font-semibold">{filteredData.length}</span> of <span className="font-semibold">{expiredData.length}</span> expired records
+            Showing <span className="font-semibold text-red-600">{filteredData.length}</span> of{' '}
+            <span className="font-semibold">{expiredData.length}</span> expired records
             {searchTerm && (
-              <span className="ml-2 text-sm bg-red-100 text-red-800 px-2 py-1 rounded-full">
+              <span className="ml-2 text-sm bg-red-100 text-red-800 px-3 py-1 rounded-full">
                 Searching: "{searchTerm}"
               </span>
             )}
@@ -1121,19 +1299,196 @@ const ExpiredCso = () => {
         <div className="flex flex-col md:flex-row justify-between items-center text-gray-600 text-sm">
           <div className="flex items-center space-x-4">
             <div className="flex items-center">
-              <Archive className="h-4 w-4 mr-2" />
+              <Archive className="h-4 w-4 mr-2 text-red-500" />
               <span>Expired CSO Archive</span>
             </div>
             <div className="hidden md:block">•</div>
             <div className="flex items-center">
-              <Clock className="h-4 w-4 mr-2" />
+              <Clock className="h-4 w-4 mr-2 text-orange-500" />
               <span>{expiredData.length} Expired Organizations</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* View Modal */}
+      {/* ---------- ADD / EDIT MODAL (Premium Form) ---------- */}
+      <Modal
+        isOpen={showAddModal || showEditModal}
+        onClose={() => {
+          setShowAddModal(false);
+          setShowEditModal(false);
+          resetForm();
+        }}
+        title={showAddModal ? 'Add Expired Record' : 'Edit Expired Record'}
+        size="xl"
+      >
+        <form onSubmit={(e) => { e.preventDefault(); handleSaveRecord(); }} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Left Column */}
+            <div className="space-y-4">
+              <FormInput
+                label="No."
+                id="no"
+                type="number"
+                value={formData.no}
+                onChange={(e) => setFormData({ ...formData, no: e.target.value })}
+              />
+              <FormInput
+                label="Name of Association"
+                id="name_of_association"
+                value={formData.name_of_association}
+                onChange={(e) => setFormData({ ...formData, name_of_association: e.target.value })}
+                required
+              />
+              <FormInput
+                label="Contact Person"
+                id="contact_person"
+                value={formData.contact_person}
+                onChange={(e) => setFormData({ ...formData, contact_person: e.target.value })}
+              />
+              <FormInput
+                label="Position"
+                id="position"
+                value={formData.position}
+                onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+              />
+              <div className="flex space-x-6">
+                <FormCheckbox
+                  label="Female"
+                  id="sex_female"
+                  checked={formData.sex_female}
+                  onChange={(e) => setFormData({ ...formData, sex_female: e.target.checked })}
+                />
+                <FormCheckbox
+                  label="Male"
+                  id="sex_male"
+                  checked={formData.sex_male}
+                  onChange={(e) => setFormData({ ...formData, sex_male: e.target.checked })}
+                />
+              </div>
+              <FormInput
+                label="Contact Number"
+                id="contact_number"
+                value={formData.contact_number}
+                onChange={(e) => setFormData({ ...formData, contact_number: e.target.value })}
+              />
+              <FormInput
+                label="Email Address"
+                id="email_address"
+                type="email"
+                value={formData.email_address}
+                onChange={(e) => setFormData({ ...formData, email_address: e.target.value })}
+              />
+              <FormInput
+                label="Number of Members"
+                id="no_of_members"
+                type="number"
+                value={formData.no_of_members}
+                onChange={(e) => setFormData({ ...formData, no_of_members: e.target.value })}
+              />
+            </div>
+
+            {/* Right Column */}
+            <div className="space-y-4">
+              <FormInput
+                label="Address"
+                id="address"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+              />
+              <FormInput
+                label="Province"
+                id="province"
+                value={formData.province}
+                onChange={(e) => setFormData({ ...formData, province: e.target.value })}
+              />
+              <FormInput
+                label="Region"
+                id="region"
+                value={formData.region}
+                onChange={(e) => setFormData({ ...formData, region: e.target.value })}
+              />
+              <FormSelect
+                label="Scope"
+                id="scope"
+                value={formData.scope}
+                onChange={(e) => setFormData({ ...formData, scope: e.target.value })}
+                options={[
+                  { value: 'Regional', label: 'Regional' },
+                  { value: 'National', label: 'National' },
+                  { value: 'Local', label: 'Local' }
+                ]}
+              />
+              <FormInput
+                label="Nature of Services"
+                id="nature_of_services"
+                value={formData.nature_of_services}
+                onChange={(e) => setFormData({ ...formData, nature_of_services: e.target.value })}
+              />
+              <FormInput
+                label="Accreditation No."
+                id="accreditation_no"
+                value={formData.accreditation_no}
+                onChange={(e) => setFormData({ ...formData, accreditation_no: e.target.value })}
+              />
+              <FormInput
+                label="Date of Issuance"
+                id="date_of_issuance"
+                type="date"
+                value={formData.date_of_issuance}
+                onChange={(e) => setFormData({ ...formData, date_of_issuance: e.target.value })}
+              />
+              <FormInput
+                label="Date of Expiration"
+                id="date_of_expiration"
+                type="date"
+                value={formData.date_of_expiration}
+                onChange={(e) => setFormData({ ...formData, date_of_expiration: e.target.value })}
+              />
+              <FormInput
+                label="Certificate URL"
+                id="certificate_of_accreditation"
+                type="url"
+                value={formData.certificate_of_accreditation}
+                onChange={(e) => setFormData({ ...formData, certificate_of_accreditation: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
+            <button
+              type="button"
+              onClick={() => {
+                setShowAddModal(false);
+                setShowEditModal(false);
+                resetForm();
+              }}
+              className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-6 py-2.5 bg-gradient-to-r from-red-600 to-red-500 text-white font-medium rounded-xl hover:from-red-700 hover:to-red-600 transition disabled:opacity-50 flex items-center"
+            >
+              {saving ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  {showAddModal ? 'Add Record' : 'Update Record'}
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ---------- VIEW MODAL (unchanged but premium) ---------- */}
       <Modal
         isOpen={showViewModal}
         onClose={() => setShowViewModal(false)}
@@ -1142,7 +1497,7 @@ const ExpiredCso = () => {
       >
         {selectedExpired && (
           <div className="space-y-6">
-            <div className="bg-red-50 rounded-xl p-6">
+            <div className="bg-gradient-to-r from-red-50 to-orange-50 rounded-xl p-6">
               <div className="flex items-start justify-between">
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900">{selectedExpired.name_of_association}</h2>
@@ -1163,7 +1518,7 @@ const ExpiredCso = () => {
                     href={selectedExpired.certificate_of_accreditation}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
+                    className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-medium rounded-xl hover:from-green-700 hover:to-emerald-700 transition"
                   >
                     <ExternalLink className="h-4 w-4 mr-2" />
                     View Certificate
@@ -1173,154 +1528,74 @@ const ExpiredCso = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white border border-gray-200 rounded-xl p-5">
+              {/* Contact Info */}
+              <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <User className="h-5 w-5 mr-2 text-blue-600" />
                   Contact Information
                 </h3>
                 <div className="space-y-3">
-                  <div>
-                    <p className="text-sm text-gray-500">Contact Person</p>
-                    <p className="font-medium text-black">{selectedExpired.contact_person || 'Not specified'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Position</p>
-                    <p className="font-medium text-black">{selectedExpired.position || 'Not specified'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Sex</p>
-                    <p className="font-medium text-black">
-                      {selectedExpired.sex_female ? 'Female' : selectedExpired.sex_male ? 'Male' : 'Not specified'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Contact Number</p>
-                    <p className="font-medium text-black">{selectedExpired.contact_number || 'Not specified'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Email Address</p>
-                    <p className="font-medium text-black">{selectedExpired.email_address || 'Not specified'}</p>
-                  </div>
+                  <div><p className="text-sm text-gray-500">Contact Person</p><p className="font-medium text-black">{selectedExpired.contact_person || 'Not specified'}</p></div>
+                  <div><p className="text-sm text-gray-500">Position</p><p className="font-medium text-black">{selectedExpired.position || 'Not specified'}</p></div>
+                  <div><p className="text-sm text-gray-500">Sex</p><p className="font-medium text-black">{selectedExpired.sex_female ? 'Female' : selectedExpired.sex_male ? 'Male' : 'Not specified'}</p></div>
+                  <div><p className="text-sm text-gray-500">Contact Number</p><p className="font-medium text-black">{selectedExpired.contact_number || 'Not specified'}</p></div>
+                  <div><p className="text-sm text-gray-500">Email Address</p><p className="font-medium text-black">{selectedExpired.email_address || 'Not specified'}</p></div>
                 </div>
               </div>
-
-              <div className="bg-white border border-gray-200 rounded-xl p-5">
+              {/* Location & Members */}
+              <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <MapPin className="h-5 w-5 mr-2 text-green-600" />
                   Location & Members
                 </h3>
                 <div className="space-y-3">
-                  <div>
-                    <p className="text-sm text-gray-500">Address</p>
-                    <p className="font-medium text-black">{selectedExpired.address || 'Not specified'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Province</p>
-                    <p className="font-medium text-black">{selectedExpired.province || 'Not specified'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Region</p>
-                    <p className="font-medium text-black">{selectedExpired.region || 'MIMAROPA'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Number of Members</p>
-                    <div className="flex items-center">
-                      <Users className="h-4 w-4 mr-2 text-purple-600" />
-                      <p className="font-medium text-black">{selectedExpired.no_of_members || '0'} members</p>
-                    </div>
-                  </div>
+                  <div><p className="text-sm text-gray-500">Address</p><p className="font-medium text-black">{selectedExpired.address || 'Not specified'}</p></div>
+                  <div><p className="text-sm text-gray-500">Province</p><p className="font-medium text-black">{selectedExpired.province || 'Not specified'}</p></div>
+                  <div><p className="text-sm text-gray-500">Region</p><p className="font-medium text-black">{selectedExpired.region || 'MIMAROPA'}</p></div>
+                  <div><p className="text-sm text-gray-500">Number of Members</p><div className="flex items-center"><Users className="h-4 w-4 mr-2 text-purple-600" /><p className="font-medium text-black">{selectedExpired.no_of_members || '0'} members</p></div></div>
                 </div>
               </div>
-
-              <div className="md:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
+              {/* Accreditation Details */}
+              <div className="md:col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <Shield className="h-5 w-5 mr-2 text-amber-600" />
                   Accreditation Details
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-500">Accreditation Number</p>
-                    <p className="font-medium font-mono text-black">{selectedExpired.accreditation_no || 'Not specified'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Date of Issuance</p>
-                    <p className="font-medium text-black">
-                      {selectedExpired.date_of_issuance ? formatDate(selectedExpired.date_of_issuance) : 'Not specified'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Date of Expiration</p>
-                    <p className="font-medium text-red-600">
-                      {selectedExpired.date_of_expiration ? formatDate(selectedExpired.date_of_expiration) : 'Not specified'}
-                    </p>
-                  </div>
+                  <div><p className="text-sm text-gray-500">Accreditation Number</p><p className="font-medium font-mono text-black">{selectedExpired.accreditation_no || 'Not specified'}</p></div>
+                  <div><p className="text-sm text-gray-500">Date of Issuance</p><p className="font-medium text-black">{selectedExpired.date_of_issuance ? formatDate(selectedExpired.date_of_issuance) : 'Not specified'}</p></div>
+                  <div><p className="text-sm text-gray-500">Date of Expiration</p><p className="font-medium text-red-600">{selectedExpired.date_of_expiration ? formatDate(selectedExpired.date_of_expiration) : 'Not specified'}</p></div>
                 </div>
               </div>
-
-              <div className="md:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
+              {/* Expiration Details */}
+              <div className="md:col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <Clock className="h-5 w-5 mr-2 text-red-600" />
                   Expiration Details
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-500">Archived On</p>
-                    <p className="font-medium text-black">
-                      {formatArchivedDate(selectedExpired)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Days Since Expiration</p>
-                    <p className="font-medium text-red-600">
-                      {daysSinceExpired(selectedExpired.date_of_expiration)} days
-                    </p>
-                  </div>
+                  <div><p className="text-sm text-gray-500">Archived On</p><p className="font-medium text-black">{formatArchivedDate(selectedExpired)}</p></div>
+                  <div><p className="text-sm text-gray-500">Days Since Expiration</p><p className="font-medium text-red-600">{daysSinceExpired(selectedExpired.date_of_expiration)} days</p></div>
                 </div>
               </div>
-
-              <div className="md:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
+              {/* Nature of Services */}
+              <div className="md:col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Nature of Services</h3>
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-gray-700 whitespace-pre-line">
-                    {selectedExpired.nature_of_services || 'No services specified'}
-                  </p>
-                </div>
+                <div className="bg-gray-50 rounded-lg p-4"><p className="text-gray-700 whitespace-pre-line">{selectedExpired.nature_of_services || 'No services specified'}</p></div>
               </div>
             </div>
 
             <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
-              <button
-                onClick={() => {
-                  setShowViewModal(false);
-                  openRestoreModal(selectedExpired);
-                }}
-                className="px-5 py-2.5 bg-green-600 text-white font-medium rounded-xl hover:bg-green-700 transition-colors"
-              >
-                <RotateCcw className="h-4 w-4 inline mr-2" />
-                Restore Record
-              </button>
-              <button
-                onClick={() => {
-                  setShowViewModal(false);
-                  openDeleteModal(selectedExpired);
-                }}
-                className="px-5 py-2.5 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 transition-colors"
-              >
-                <Trash2 className="h-4 w-4 inline mr-2" />
-                Permanently Delete
-              </button>
+              <button onClick={() => { setShowViewModal(false); openEditModal(selectedExpired); }} className="px-5 py-2.5 bg-amber-600 text-white font-medium rounded-xl hover:bg-amber-700 transition"><Edit className="h-4 w-4 inline mr-2" />Edit</button>
+              <button onClick={() => { setShowViewModal(false); openRestoreModal(selectedExpired); }} className="px-5 py-2.5 bg-green-600 text-white font-medium rounded-xl hover:bg-green-700 transition"><RotateCcw className="h-4 w-4 inline mr-2" />Restore</button>
+              <button onClick={() => { setShowViewModal(false); openDeleteModal(selectedExpired); }} className="px-5 py-2.5 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 transition"><Trash2 className="h-4 w-4 inline mr-2" />Delete</button>
             </div>
           </div>
         )}
       </Modal>
 
       {/* Restore Confirmation Modal */}
-      <Modal
-        isOpen={showRestoreModal}
-        onClose={() => setShowRestoreModal(false)}
-        title="Restore Expired Record"
-        size="sm"
-      >
+      <Modal isOpen={showRestoreModal} onClose={() => setShowRestoreModal(false)} title="Restore Expired Record" size="sm">
         <div className="text-center py-6">
           <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
             <RotateCcw className="h-8 w-8 text-green-600" />
@@ -1332,29 +1607,14 @@ const ExpiredCso = () => {
             This will move it back to the active CSO list.
           </p>
           <div className="flex justify-center space-x-3">
-            <button
-              onClick={() => setShowRestoreModal(false)}
-              className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleRestore}
-              className="px-6 py-2.5 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
-            >
-              Restore Record
-            </button>
+            <button onClick={() => setShowRestoreModal(false)} className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition">Cancel</button>
+            <button onClick={handleRestore} className="px-6 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-medium rounded-lg hover:from-green-700 hover:to-emerald-700 transition">Restore Record</button>
           </div>
         </div>
       </Modal>
 
       {/* Permanent Delete Confirmation Modal */}
-      <Modal
-        isOpen={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
-        title="Permanently Delete"
-        size="sm"
-      >
+      <Modal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} title="Permanently Delete" size="sm">
         <div className="text-center py-6">
           <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
             <Trash2 className="h-8 w-8 text-red-600" />
@@ -1366,18 +1626,8 @@ const ExpiredCso = () => {
             This action cannot be undone.
           </p>
           <div className="flex justify-center space-x-3">
-            <button
-              onClick={() => setShowDeleteModal(false)}
-              className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handlePermanentDelete}
-              className="px-6 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
-            >
-              Delete Permanently
-            </button>
+            <button onClick={() => setShowDeleteModal(false)} className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition">Cancel</button>
+            <button onClick={handlePermanentDelete} className="px-6 py-2.5 bg-gradient-to-r from-red-600 to-red-500 text-white font-medium rounded-lg hover:from-red-700 hover:to-red-600 transition">Delete Permanently</button>
           </div>
         </div>
       </Modal>

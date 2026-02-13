@@ -7,6 +7,7 @@ import ExpiredCso from "./CSO-component/ExpiredCso";
 import CertificateNumber from "./CSO-component/CertificateNumber";
 import Deferred from "./CSO-component/Deferred";
 import CsoRenewal from "./CSO-component/CsoRenewal";
+import CsoDisapproved from "./CSO-component/CsoDisapproved";
 
 const tabs = [
   "Accredited",
@@ -72,7 +73,7 @@ export default function CSO() {
           <ExpiredCso />
         )}
         {activeTab === "CSOs disapproved" && (
-          <Section title="Announcements Board" />
+          <CsoDisapproved />
         )}
         {activeTab === "Deferred" && (
           <Deferred />
