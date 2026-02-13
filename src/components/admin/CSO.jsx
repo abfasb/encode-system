@@ -6,6 +6,7 @@ import CsoOnProcess from "./CSO-component/CsoOnProcess";
 import ExpiredCso from "./CSO-component/ExpiredCso";
 import CertificateNumber from "./CSO-component/CertificateNumber";
 import Deferred from "./CSO-component/Deferred";
+import CsoRenewal from "./CSO-component/CsoRenewal";
 
 const tabs = [
   "Accredited",
@@ -65,7 +66,7 @@ export default function CSO() {
           <CsoOnProcess />
         )}
         {activeTab === "Renewal Application" && (
-          <Section title="Document Center" />
+          <CsoRenewal />
         )}
         {activeTab === "Expired Accreditation" && (
           <ExpiredCso />
