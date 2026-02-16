@@ -65,6 +65,28 @@ const isExpiringSoon = (expirationDateString) => {
   return diffDays >= 0 && diffDays <= 90;
 };
 
+// ---------- List of MIMAROPA provinces ----------
+const MIMAROPA_PROVINCES = [
+  'Occidental Mindoro',
+  'Oriental Mindoro',
+  'Marinduque',
+  'Palawan',
+  'Romblon'
+];
+
+// ---------- Helper: Check if a record belongs to a given province (based on province field or address) ----------
+const recordMatchesProvince = (record, province) => {
+  // If province field matches exactly
+  if (record.province && record.province.toLowerCase() === province.toLowerCase()) {
+    return true;
+  }
+  // If address contains the province name (case‑insensitive)
+  if (record.address && record.address.toLowerCase().includes(province.toLowerCase())) {
+    return true;
+  }
+  return false;
+};
+
 // ---------- DataTable Component (unchanged) ----------
 const DataTable = ({
   columns,
@@ -318,8 +340,8 @@ const Accredited = () => {
     scope: 'all',
     hasCertificate: 'all',
     status: 'all',
-    province: 'all',
-    expirationStatus: 'all'           // new filter: 'all', 'valid', 'expiringSoon'
+    province: 'all',                // selected province (e.g., 'Occidental Mindoro', 'all')
+    expirationStatus: 'all'          // 'all', 'valid', 'expiringSoon'
   });
   const [sortConfig, setSortConfig] = useState({
     field: 'no',
@@ -899,16 +921,16 @@ const Accredited = () => {
       filtered = filtered.filter(item => item.status === filters.status);
     }
 
+    // Province filter: match either province field or address content
     if (filters.province !== 'all') {
-      filtered = filtered.filter(item => item.province === filters.province);
+      filtered = filtered.filter(item => recordMatchesProvince(item, filters.province));
     }
 
-    // New expiration filter
+    // Expiration filter
     if (filters.expirationStatus !== 'all') {
       if (filters.expirationStatus === 'expiringSoon') {
         filtered = filtered.filter(item => isExpiringSoon(item.date_of_expiration));
       } else if (filters.expirationStatus === 'valid') {
-        // Valid means not expiring soon (and not expired – but expired are already removed)
         filtered = filtered.filter(item => !isExpiringSoon(item.date_of_expiration));
       }
     }
@@ -1076,9 +1098,12 @@ const Accredited = () => {
     }
   ];
 
+  // ---------- Build list of provinces for dropdown: include all from data plus all MIMAROPA provinces ----------
   const provinces = useMemo(() => {
-    const uniqueProvinces = [...new Set(csoData.map(item => item.province).filter(Boolean))];
-    return uniqueProvinces.sort();
+    const fromData = [...new Set(csoData.map(item => item.province).filter(Boolean))];
+    // Add all MIMAROPA provinces (ensuring they appear even if not in data)
+    const allProvinces = new Set([...fromData, ...MIMAROPA_PROVINCES]);
+    return Array.from(allProvinces).sort();
   }, [csoData]);
 
   // ---------- Render ----------
@@ -1259,6 +1284,7 @@ const Accredited = () => {
               <option value="Pending">Pending</option>
             </select>
 
+            {/* Province dropdown: includes all MIMAROPA provinces + any others from data */}
             <select
               value={filters.province}
               onChange={(e) => handleFilterChange('province', e.target.value)}
@@ -1270,7 +1296,7 @@ const Accredited = () => {
               ))}
             </select>
 
-            {/* New Expiration Filter */}
+            {/* Expiration Filter */}
             <select
               value={filters.expirationStatus}
               onChange={(e) => handleFilterChange('expirationStatus', e.target.value)}
