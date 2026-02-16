@@ -54,6 +54,17 @@ const isExpired = (expirationDateString) => {
   return expDate < today;
 };
 
+// ---------- Helper: Check if a date string is expiring soon (within next 90 days) ----------
+const isExpiringSoon = (expirationDateString) => {
+  if (!expirationDateString) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const expDate = new Date(expirationDateString);
+  expDate.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24));
+  return diffDays >= 0 && diffDays <= 90;
+};
+
 // ---------- DataTable Component (unchanged) ----------
 const DataTable = ({
   columns,
@@ -307,7 +318,8 @@ const Accredited = () => {
     scope: 'all',
     hasCertificate: 'all',
     status: 'all',
-    province: 'all'
+    province: 'all',
+    expirationStatus: 'all'           // new filter: 'all', 'valid', 'expiringSoon'
   });
   const [sortConfig, setSortConfig] = useState({
     field: 'no',
@@ -330,13 +342,11 @@ const Accredited = () => {
   // ---------- Move a single expired record to cso-expired ----------
   const moveExpiredRecord = async (docId, recordData) => {
     try {
-      // Add to archive collection with the same document ID
       await setDoc(doc(db, 'cso-expired', docId), {
         ...recordData,
         expiredAt: serverTimestamp(),
         movedFrom: 'cso'
       });
-      // Delete from active collection
       await deleteDoc(doc(db, 'cso', docId));
       return true;
     } catch (error) {
@@ -376,12 +386,10 @@ const Accredited = () => {
         data.push({ id: doc.id, ...doc.data() });
       });
 
-      // Move any expired records to the archive collection
       const movedCount = await checkAndMoveExpiredRecords(data);
       let finalData = data;
 
       if (movedCount > 0) {
-        // Re-fetch after moving expired records
         const newSnapshot = await getDocs(q);
         const updatedData = [];
         newSnapshot.forEach((doc) => {
@@ -394,17 +402,10 @@ const Accredited = () => {
 
       setCsoData(finalData);
 
-      // Update statistics based on active (non-expired) records
       const total = finalData.length;
       const active = finalData.filter(item => item.status === 'Active').length;
       const withCertificates = finalData.filter(item => item.certificate_of_accreditation).length;
-      const expiringSoon = finalData.filter(item => {
-        if (!item.date_of_expiration) return false;
-        const expDate = new Date(item.date_of_expiration);
-        const today = new Date();
-        const daysDiff = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24));
-        return daysDiff > 0 && daysDiff <= 90;
-      }).length;
+      const expiringSoon = finalData.filter(item => isExpiringSoon(item.date_of_expiration)).length;
 
       setStats({ total, active, expiringSoon, withCertificates });
     } catch (err) {
@@ -417,7 +418,7 @@ const Accredited = () => {
 
   // ---------- Periodic check: run every hour ----------
   useEffect(() => {
-    fetchCSOData(); // initial fetch
+    fetchCSOData();
     const interval = setInterval(() => {
       fetchCSOData();
     }, 60 * 60 * 1000); // 1 hour
@@ -454,13 +455,11 @@ const Accredited = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Required fields
     if (!formData.no || !formData.name_of_association) {
       setError('No. and Name of Association are required fields');
       return;
     }
 
-    // Warn if the record is being added/updated with an expired date
     if (formData.date_of_expiration && isExpired(formData.date_of_expiration)) {
       const confirmAdd = window.confirm(
         'This record appears to be expired. It will be automatically moved to the archive. Do you still want to proceed?'
@@ -481,7 +480,7 @@ const Accredited = () => {
       setFormData(initialFormState);
       setEditingId(null);
       setShowAddModal(false);
-      fetchCSOData(); // this will automatically move expired records
+      fetchCSOData();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error('Error saving CSO data:', err);
@@ -830,7 +829,7 @@ const Accredited = () => {
             setImportProgress(0);
             setShowImportModal(false);
             setSuccess(`${imported} records imported successfully!`);
-            fetchCSOData(); // auto‑archive any expired records
+            fetchCSOData();
             setTimeout(() => setSuccess(''), 3000);
           }, 500);
         } catch (err) {
@@ -902,6 +901,16 @@ const Accredited = () => {
 
     if (filters.province !== 'all') {
       filtered = filtered.filter(item => item.province === filters.province);
+    }
+
+    // New expiration filter
+    if (filters.expirationStatus !== 'all') {
+      if (filters.expirationStatus === 'expiringSoon') {
+        filtered = filtered.filter(item => isExpiringSoon(item.date_of_expiration));
+      } else if (filters.expirationStatus === 'valid') {
+        // Valid means not expiring soon (and not expired – but expired are already removed)
+        filtered = filtered.filter(item => !isExpiringSoon(item.date_of_expiration));
+      }
     }
 
     filtered.sort((a, b) => {
@@ -1017,8 +1026,9 @@ const Accredited = () => {
         <div className="space-y-1">
           <div className="font-mono text-sm text-black">{row.accreditation_no}</div>
           {row.date_of_expiration && (
-            <div className={`text-xs ${new Date(row.date_of_expiration) < new Date() ? 'text-red-600' : 'text-gray-500'}`}>
+            <div className={`text-xs ${isExpiringSoon(row.date_of_expiration) ? 'text-amber-600 font-semibold' : 'text-gray-500'}`}>
               Expires: {new Date(row.date_of_expiration).toLocaleDateString()}
+              {isExpiringSoon(row.date_of_expiration) && ' (soon)'}
             </div>
           )}
         </div>
@@ -1099,7 +1109,6 @@ const Accredited = () => {
               Export Excel
             </button>
 
-
             <button
               onClick={fetchCSOData}
               className="inline-flex items-center px-4 py-2.5 bg-gray-600 text-white font-semibold rounded-xl shadow-lg hover:bg-gray-700 transition-colors"
@@ -1111,7 +1120,7 @@ const Accredited = () => {
         </div>
       </div>
 
-      {/* Stats Cards – only active (non‑expired) records are counted */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <div className="bg-blue-500 rounded-2xl shadow-xl p-6 text-white">
           <div className="flex items-center justify-between">
@@ -1260,6 +1269,17 @@ const Accredited = () => {
                 <option key={province} value={province}>{province}</option>
               ))}
             </select>
+
+            {/* New Expiration Filter */}
+            <select
+              value={filters.expirationStatus}
+              onChange={(e) => handleFilterChange('expirationStatus', e.target.value)}
+              className="px-4 py-3 text-black bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+            >
+              <option value="all">All Expiration</option>
+              <option value="valid">Valid (not expiring soon)</option>
+              <option value="expiringSoon">Expiring Soon (≤90 days)</option>
+            </select>
           </div>
         </div>
 
@@ -1278,7 +1298,7 @@ const Accredited = () => {
         </div>
       </div>
 
-      {/* Data Table – only non‑expired records shown */}
+      {/* Data Table */}
       <DataTable
         columns={columns}
         data={paginatedData}
@@ -1731,9 +1751,7 @@ const Accredited = () => {
                   <div>
                     <p className="text-sm text-gray-500">Date of Expiration</p>
                     <p className={`font-medium text-black ${
-                      selectedCSO.date_of_expiration && new Date(selectedCSO.date_of_expiration) < new Date()
-                        ? 'text-red-600'
-                        : ''
+                      isExpiringSoon(selectedCSO.date_of_expiration) ? 'text-amber-600' : ''
                     }`}>
                       {selectedCSO.date_of_expiration
                         ? new Date(selectedCSO.date_of_expiration).toLocaleDateString()

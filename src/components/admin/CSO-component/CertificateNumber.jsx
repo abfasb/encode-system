@@ -867,14 +867,6 @@ const CertificateNumber = () => {
             </button>
 
             <button
-              onClick={() => setShowImportModal(true)}
-              className="inline-flex items-center px-4 py-2.5 bg-purple-600 text-white font-semibold rounded-xl shadow-lg hover:bg-purple-700 transition-colors"
-            >
-              <Upload className="h-5 w-5 mr-2" />
-              Import Excel
-            </button>
-
-            <button
               onClick={fetchCertData}
               className="inline-flex items-center px-4 py-2.5 bg-gray-600 text-white font-semibold rounded-xl shadow-lg hover:bg-gray-700 transition-colors"
             >
