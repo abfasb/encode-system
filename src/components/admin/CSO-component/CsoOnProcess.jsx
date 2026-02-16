@@ -1256,14 +1256,6 @@ const CsoOnProcess = () => {
             </button>
 
             <button
-              onClick={() => setShowImportModal(true)}
-              className="inline-flex items-center px-4 py-2.5 bg-purple-600 text-white font-semibold rounded-xl shadow-lg hover:bg-purple-700 transition-colors"
-            >
-              <Upload className="h-5 w-5 mr-2" />
-              Import Excel
-            </button>
-
-            <button
               onClick={fetchCSOData}
               className="inline-flex items-center px-4 py-2.5 bg-gray-600 text-white font-semibold rounded-xl shadow-lg hover:bg-gray-700 transition-colors"
             >
@@ -1274,7 +1266,6 @@ const CsoOnProcess = () => {
         </div>
       </div>
 
-      {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <div className="bg-blue-500 rounded-2xl shadow-xl p-6 text-white">
           <div className="flex items-center justify-between">

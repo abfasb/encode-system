@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   collection,
   query,
@@ -31,77 +31,76 @@ import {
   FiHome,
 } from "react-icons/fi";
 
-// ------------------------------------------------------------
-//  DEPARTMENT OF AGRICULTURE – GREEN THEME FILE MANAGER
-// ------------------------------------------------------------
 const UploadCso = () => {
   const [currentPath, setCurrentPath] = useState(""); // empty = root
   const [pathSegments, setPathSegments] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState("grid"); // grid | list
+  const [viewMode, setViewMode] = useState("grid");
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
 
-  useEffect(() => {
-    const fetchItems = async () => {
-      setLoading(true);
-      try {
-        const q = query(
-          collection(db, "csoUploads"),
-          where("parent", "==", currentPath),
-          orderBy("type", "desc"),
-          orderBy("name", "asc")
-        );
-        const querySnapshot = await getDocs(q);
-        const fetched = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        setItems(fetched);
-      } catch (error) {
-        if (
-          error.code === "failed-precondition" ||
-          error.message.includes("requires an index")
-        ) {
-          console.warn("Index not ready – falling back to client-side sorting");
-          try {
-            const fallbackQuery = query(
-              collection(db, "csoUploads"),
-              where("parent", "==", currentPath)
-            );
-            const fallbackSnapshot = await getDocs(fallbackQuery);
-            let fetched = fallbackSnapshot.docs.map((doc) => ({
-              id: doc.id,
-              ...doc.data(),
-            }));
-            // Manual sorting: folders first, then by name
-            fetched.sort((a, b) => {
-              if (a.type === b.type) {
-                return a.name.localeCompare(b.name);
-              }
-              return a.type === "folder" ? -1 : 1;
-            });
-            setItems(fetched);
-          } catch (fallbackError) {
-            console.error("Fallback query also failed:", fallbackError);
-            setItems([]);
-          }
-        } else {
-          console.error("Fetch error:", error);
+  // Fetch items for the current path
+  const fetchItems = useCallback(async () => {
+    setLoading(true);
+    try {
+      const q = query(
+        collection(db, "csoUploads"),
+        where("parent", "==", currentPath),
+        orderBy("type", "desc"),
+        orderBy("name", "asc")
+      );
+      const querySnapshot = await getDocs(q);
+      const fetched = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setItems(fetched);
+    } catch (error) {
+      if (
+        error.code === "failed-precondition" ||
+        error.message.includes("requires an index")
+      ) {
+        console.warn("Index not ready – falling back to client-side sorting");
+        try {
+          const fallbackQuery = query(
+            collection(db, "csoUploads"),
+            where("parent", "==", currentPath)
+          );
+          const fallbackSnapshot = await getDocs(fallbackQuery);
+          let fetched = fallbackSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          }));
+          fetched.sort((a, b) => {
+            if (a.type === b.type) {
+              return a.name.localeCompare(b.name);
+            }
+            return a.type === "folder" ? -1 : 1;
+          });
+          setItems(fetched);
+        } catch (fallbackError) {
+          console.error("Fallback query also failed:", fallbackError);
           setItems([]);
         }
-      } finally {
-        setLoading(false);
+      } else {
+        console.error("Fetch error:", error);
+        setItems([]);
       }
-    };
-
-    fetchItems();
-    setPathSegments(currentPath ? currentPath.split("/") : []);
+    } finally {
+      setLoading(false);
+    }
   }, [currentPath]);
 
+  // Update path segments and fetch items on path change
+  useEffect(() => {
+    fetchItems();
+    setPathSegments(currentPath ? currentPath.split("/") : []);
+  }, [currentPath, fetchItems]);
+
+  // Create a new folder
   const createFolder = async () => {
     if (!newFolderName.trim()) {
       alert("Folder name cannot be empty");
@@ -132,13 +131,14 @@ const UploadCso = () => {
 
       setNewFolderName("");
       setShowNewFolderInput(false);
-      window.location.reload();
+      fetchItems(); // Refresh the list
     } catch (error) {
       console.error("Create folder error:", error);
       alert("Failed to create folder");
     }
   };
 
+  // Upload a file
   const uploadFile = async () => {
     if (!selectedFile) {
       alert("Please select a file");
@@ -172,7 +172,7 @@ const UploadCso = () => {
 
       setSelectedFile(null);
       document.getElementById("file-upload").value = "";
-      window.location.reload();
+      fetchItems(); // Refresh the list
     } catch (error) {
       console.error("Upload error:", error);
       alert("Upload failed");
@@ -181,31 +181,7 @@ const UploadCso = () => {
     }
   };
 
-  const deleteItem = async (item) => {
-    if (!window.confirm(`Are you sure you want to delete "${item.name}"?`)) {
-      return;
-    }
-
-    try {
-      if (item.type === "file") {
-        if (item.storagePath) {
-          const storageRef = ref(storage, item.storagePath);
-          await deleteObject(storageRef);
-          window.location.reload();
-        }
-        await deleteDoc(doc(db, "csoUploads", item.id));
-        window.location.reload();
-      } else {
-        await deleteFolderRecursive(item.path);
-        await deleteDoc(doc(db, "csoUploads", item.id));
-        window.location.reload();
-      }
-    } catch (error) {
-      console.error("Delete error:", error);
-      alert("Delete failed");
-    }
-  };
-
+  // Recursively delete a folder and its contents
   const deleteFolderRecursive = async (folderPath) => {
     const q = query(
       collection(db, "csoUploads"),
@@ -224,56 +200,38 @@ const UploadCso = () => {
     }
   };
 
-  const renameItem = async (item) => {
-    const newName = window.prompt("Enter new name:", item.name);
-    if (!newName || newName === item.name) return;
-    if (newName.includes("/")) {
-      alert("Name cannot contain '/'");
+  // Delete an item (file or folder)
+  const deleteItem = async (item) => {
+    if (!window.confirm(`Are you sure you want to delete "${item.name}"?`)) {
       return;
     }
 
     try {
-      const newPath = item.parent ? `${item.parent}/${newName}` : newName;
-
       if (item.type === "file") {
         if (item.storagePath) {
-          const oldStorageRef = ref(storage, item.storagePath);
-          const url = await getDownloadURL(oldStorageRef);
-          const response = await fetch(url);
-          const blob = await response.blob();
-          const newStoragePath = item.parent
-            ? `csoUploads/${item.parent}/${newName}`
-            : `csoUploads/${newName}`;
-          const newDownloadUrl = await uploadFileToFirebase(
-            new File([blob], newName, { type: item.fileType }),
-            newStoragePath
-          );
-          await deleteObject(oldStorageRef);
-
-          await updateDoc(doc(db, "csoUploads", item.id), {
-            name: newName,
-            path: newPath,
-            fileUrl: newDownloadUrl,
-            storagePath: newStoragePath,
-            updatedAt: serverTimestamp(),
-          });
-          window.location.reload();
+          const storageRef = ref(storage, item.storagePath);
+          await deleteObject(storageRef);
         }
+        await deleteDoc(doc(db, "csoUploads", item.id));
       } else {
-        await updateDoc(doc(db, "csoUploads", item.id), {
-          name: newName,
-          path: newPath,
-          updatedAt: serverTimestamp(),
-        });
-        await updateDescendantPaths(item.path, newPath);
-          window.location.reload();
+        await deleteFolderRecursive(item.path);
+        await deleteDoc(doc(db, "csoUploads", item.id));
+
+        // If we deleted the current folder, navigate to parent
+        if (item.path === currentPath) {
+          const parentPath = currentPath.split("/").slice(0, -1).join("/");
+          setCurrentPath(parentPath);
+          return; // fetchItems will be triggered by the path change
+        }
       }
+      fetchItems(); // Refresh the list (if we didn't navigate)
     } catch (error) {
-      console.error("Rename error:", error);
-      alert("Rename failed");
+      console.error("Delete error:", error);
+      alert("Delete failed");
     }
   };
 
+  // Recursively update paths of descendants after rename
   const updateDescendantPaths = async (oldBasePath, newBasePath) => {
     const q = query(
       collection(db, "csoUploads"),
@@ -307,12 +265,71 @@ const UploadCso = () => {
     }
   };
 
+  // Rename an item
+  const renameItem = async (item) => {
+    const newName = window.prompt("Enter new name:", item.name);
+    if (!newName || newName === item.name) return;
+    if (newName.includes("/")) {
+      alert("Name cannot contain '/'");
+      return;
+    }
+
+    try {
+      const newPath = item.parent ? `${item.parent}/${newName}` : newName;
+
+      if (item.type === "file") {
+        if (item.storagePath) {
+          const oldStorageRef = ref(storage, item.storagePath);
+          const url = await getDownloadURL(oldStorageRef);
+          const response = await fetch(url);
+          const blob = await response.blob();
+          const newStoragePath = item.parent
+            ? `csoUploads/${item.parent}/${newName}`
+            : `csoUploads/${newName}`;
+          const newDownloadUrl = await uploadFileToFirebase(
+            new File([blob], newName, { type: item.fileType }),
+            newStoragePath
+          );
+          await deleteObject(oldStorageRef);
+
+          await updateDoc(doc(db, "csoUploads", item.id), {
+            name: newName,
+            path: newPath,
+            fileUrl: newDownloadUrl,
+            storagePath: newStoragePath,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      } else {
+        // It's a folder
+        await updateDoc(doc(db, "csoUploads", item.id), {
+          name: newName,
+          path: newPath,
+          updatedAt: serverTimestamp(),
+        });
+        await updateDescendantPaths(item.path, newPath);
+
+        // If we renamed the current folder, update currentPath
+        if (item.path === currentPath) {
+          setCurrentPath(newPath);
+          return; // fetchItems will be triggered by path change
+        }
+      }
+      fetchItems(); // Refresh the list (if we didn't navigate)
+    } catch (error) {
+      console.error("Rename error:", error);
+      alert("Rename failed");
+    }
+  };
+
+  // Navigation
   const navigateToFolder = (folderPath) => setCurrentPath(folderPath);
   const navigateBreadcrumb = (index) => {
     const path = pathSegments.slice(0, index + 1).join("/");
     setCurrentPath(path);
   };
 
+  // Download a file
   const downloadFile = (url, fileName) => {
     const a = document.createElement("a");
     a.href = url;
@@ -320,6 +337,7 @@ const UploadCso = () => {
     a.click();
   };
 
+  // Preview a file (open image/pdf in new tab, download others)
   const renderPreview = (item) => {
     if (item.type !== "file") return;
     if (
@@ -332,6 +350,7 @@ const UploadCso = () => {
     }
   };
 
+  // Format file size
   const formatFileSize = (bytes) => {
     if (bytes === 0) return "0 Bytes";
     const k = 1024;
@@ -340,6 +359,7 @@ const UploadCso = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   };
 
+  // Get appropriate icon for file type
   const getFileIcon = (fileType) => {
     if (fileType?.startsWith("image/")) return <FiImage className="text-lime-400" />;
     if (fileType?.startsWith("video/")) return <FiFilm className="text-emerald-400" />;
@@ -348,9 +368,11 @@ const UploadCso = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-900 via-emerald-800 to-green-900 p-6">
+    // Updated gradient: from dark green to a lighter green
+    <div className="min-h-screen bg-gradient-to-br from-green-900 via-green-700 to-green-500 p-6">
       <div className="max-w-7xl mx-auto bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden">
         
+        {/* Header */}
         <div className="px-8 py-6 border-b border-white/10 bg-black/20">
           <h1 className="text-3xl font-bold text-white flex items-center gap-3">
             <FiFolder className="text-lime-300" />
@@ -361,7 +383,9 @@ const UploadCso = () => {
           </p>
         </div>
 
+        {/* Toolbar */}
         <div className="px-8 py-4 flex flex-wrap items-center justify-between gap-4 bg-black/30">
+          {/* Breadcrumb */}
           <div className="flex items-center text-sm text-white/80 bg-white/5 px-4 py-2 rounded-full">
             <button
               onClick={() => setCurrentPath("")}
@@ -382,6 +406,7 @@ const UploadCso = () => {
             ))}
           </div>
 
+          {/* Action Buttons */}
           <div className="flex items-center gap-3">
             <button
               onClick={() => setShowNewFolderInput(!showNewFolderInput)}
@@ -427,6 +452,7 @@ const UploadCso = () => {
           </div>
         </div>
 
+        {/* New Folder Input */}
         {showNewFolderInput && (
           <div className="px-8 py-4 bg-white/5 border-t border-white/10">
             <div className="flex items-center gap-3">
@@ -455,6 +481,7 @@ const UploadCso = () => {
           </div>
         )}
 
+        {/* Selected File Info */}
         {selectedFile && (
           <div className="px-8 py-4 bg-emerald-600/20 border-t border-emerald-500/50 flex items-center justify-between">
             <span className="text-white truncate max-w-md">
@@ -478,6 +505,7 @@ const UploadCso = () => {
           </div>
         )}
 
+        {/* File List */}
         <div className="px-8 py-6">
           {loading ? (
             <div className="flex justify-center py-20">
@@ -505,7 +533,7 @@ const UploadCso = () => {
                     ${viewMode === "grid" ? "p-5 flex flex-col items-center text-center" : "p-4 flex items-center gap-4"}
                   `}
                 >
-                  {/* Icon & Preview */}
+                  {/* Icon */}
                   {item.type === "folder" ? (
                     <button
                       onClick={() => navigateToFolder(item.path)}
@@ -538,6 +566,7 @@ const UploadCso = () => {
                     )}
                   </div>
 
+                  {/* Action Buttons */}
                   <div
                     className={`
                       flex gap-2
