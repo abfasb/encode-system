@@ -10,11 +10,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
     "axios": "^1.13.5",
     "clsx": "^2.1.1",
+    "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
     "firebase": "^12.8.0",
     "framer-motion": "^12.31.0",
+    "lodash": "^4.17.23",
     "lucide-react": "^0.563.0",
     "nft.storage": "^7.2.0",
     "react": "^19.2.0",

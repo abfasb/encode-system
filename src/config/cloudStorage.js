@@ -1,8 +1,6 @@
-// firebaseStorage.js
 import { initializeApp } from "firebase/app";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
-// --- SECOND FIREBASE APP CONFIG (HARD-CODED) ---
 const secondFirebaseConfig = {
   apiKey: "AIzaSyBAPuUHFKVrzMHA_CWxBITCqci6-RK5Beg",
   authDomain: "pharma-kiosk-ad218.firebaseapp.com",

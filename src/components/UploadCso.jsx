@@ -368,7 +368,6 @@ const UploadCso = () => {
   };
 
   return (
-    // Updated gradient: from dark green to a lighter green
     <div className="min-h-screen bg-gradient-to-br from-green-900 via-green-700 to-green-500 p-6">
       <div className="max-w-7xl mx-auto bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden">
         
@@ -554,13 +553,13 @@ const UploadCso = () => {
                     </button>
                   )}
 
-                  {/* Name & Details */}
-                  <div className="flex-1 min-w-0">
+                  {/* Name & Details - Improved truncation */}
+                  <div className={`${viewMode === "grid" ? "w-full overflow-hidden px-1" : "flex-1 min-w-0"}`}>
                     <p className="text-white font-medium truncate" title={item.name}>
                       {item.name}
                     </p>
                     {item.type === "file" && (
-                      <p className="text-white/50 text-sm mt-1">
+                      <p className="text-white/50 text-sm mt-1 truncate">
                         {formatFileSize(item.size)}
                       </p>
                     )}

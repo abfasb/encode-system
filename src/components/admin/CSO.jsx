@@ -8,6 +8,7 @@ import CertificateNumber from "./CSO-component/CertificateNumber";
 import Deferred from "./CSO-component/Deferred";
 import CsoRenewal from "./CSO-component/CsoRenewal";
 import CsoDisapproved from "./CSO-component/CsoDisapproved";
+import CsoFarmers from "./CSO-component/CsoFarmers";
 
 const tabs = [
   "Accredited",
@@ -18,6 +19,7 @@ const tabs = [
   "CSOs disapproved",
   "Deferred",
   "Certificate Number",
+  "CSO Farmers",
 ];
 
 export default function CSO() {
@@ -80,6 +82,9 @@ export default function CSO() {
         )}
         {activeTab === "Certificate Number" && (
           <CertificateNumber/>
+        )}
+        {activeTab === "CSO Farmers" && (
+          <CsoFarmers/>
         )}
       </div>
     </div>

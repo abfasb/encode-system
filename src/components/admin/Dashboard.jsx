@@ -488,21 +488,19 @@ export default function Dashboard() {
   const logAction = async (action, details = {}) => {
   try {
     await addDoc(collection(db, "audit-logs"), {
-      user: "Admin", // In real app, get from auth
+      user: "Admin",
       action,
       details,
       timestamp: new Date(),
-      ipAddress: await getClientIP() // Optional: Add IP tracking
+      ipAddress: await getClientIP() 
     });
     
-    // Refresh audit logs
     fetchAuditLogs();
   } catch (error) {
     console.error("Error logging action:", error);
   }
 };
 
-// Helper function to get client IP (simplified)
 const getClientIP = async () => {
   try {
     const response = await fetch('https://api.ipify.org?format=json');
