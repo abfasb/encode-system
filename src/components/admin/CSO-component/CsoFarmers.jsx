@@ -10,7 +10,7 @@ import {
   MagnifyingGlassIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
-import { debounce } from 'lodash'; // optional, you can implement your own debounce
+import { debounce } from 'lodash'; 
 
 const CsoFarmers = () => {
   const [data, setData] = useState([]);
@@ -20,7 +20,6 @@ const CsoFarmers = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [pendingSearch, setPendingSearch] = useState('');
 
-  // ---------- Fetch from Firestore ----------
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -39,7 +38,6 @@ const CsoFarmers = () => {
     fetchData();
   }, []);
 
-  // Debounced search
   useEffect(() => {
     const handler = setTimeout(() => {
       setSearchTerm(pendingSearch);
@@ -47,7 +45,6 @@ const CsoFarmers = () => {
     return () => clearTimeout(handler);
   }, [pendingSearch]);
 
-  // Memoized filtered data
   const filteredData = useMemo(() => {
     const term = searchTerm.toLowerCase();
     return data.filter(item => 
@@ -59,7 +56,6 @@ const CsoFarmers = () => {
     );
   }, [data, searchTerm]);
 
-  // ---------- Delete ----------
   const handleDelete = useCallback(async (id) => {
     if (window.confirm('Are you sure you want to delete this association?')) {
       try {
@@ -71,7 +67,6 @@ const CsoFarmers = () => {
     }
   }, []);
 
-  // ---------- Edit ----------
   const handleEdit = useCallback((item) => {
     setEditingItem({ ...item });
     setShowEditModal(true);
@@ -98,18 +93,15 @@ const CsoFarmers = () => {
     }
   };
 
-  // ---------- Dashboard metrics ----------
   const totalAssociations = data.length;
   const totalMembers = data.reduce((sum, item) => sum + (item.total || 0), 0);
   const totalMale = data.reduce((sum, item) => sum + (item.male || 0), 0);
   const totalFemale = data.reduce((sum, item) => sum + (item.female || 0), 0);
 
-  // ---------- Excel Export (EXACTLY as requested) ----------
   const exportToExcel = async () => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Farmers Cooperative');
 
-    // 1. SET COLUMNS
     worksheet.columns = [
       { key: 'prov', width: 18 },
       { key: 'no', width: 6 },
@@ -311,21 +303,20 @@ const CsoFarmers = () => {
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen font-['Times_New_Roman']">
-      {/* Dashboard Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
+        <div className="bg-white rounded-lg shadow p-4 ">
           <p className="text-sm text-gray-600">Total Associations</p>
           <p className="text-2xl font-bold">{totalAssociations}</p>
         </div>
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
+        <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm text-gray-600">Total Members</p>
           <p className="text-2xl font-bold">{totalMembers.toLocaleString()}</p>
         </div>
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500">
+        <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm text-gray-600">Male Members</p>
           <p className="text-2xl font-bold">{totalMale.toLocaleString()}</p>
         </div>
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-pink-500">
+        <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm text-gray-600">Female Members</p>
           <p className="text-2xl font-bold">{totalFemale.toLocaleString()}</p>
         </div>

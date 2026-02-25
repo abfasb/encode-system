@@ -76,18 +76,104 @@ const MIMAROPA_PROVINCES = [
 
 // ---------- Helper: Check if a record belongs to a given province (based on province field or address) ----------
 const recordMatchesProvince = (record, province) => {
-  // If province field matches exactly
   if (record.province && record.province.toLowerCase() === province.toLowerCase()) {
     return true;
   }
-  // If address contains the province name (case‑insensitive)
   if (record.address && record.address.toLowerCase().includes(province.toLowerCase())) {
     return true;
   }
   return false;
 };
 
-// ---------- DataTable Component (unchanged) ----------
+// ---------- Helper: Extract province and municipality from address ----------
+const parseAddress = (address) => {
+  if (!address) return { province: '', municipality: '' };
+  const parts = address.split(',').map(s => s.trim());
+  if (parts.length >= 3) {
+    return {
+      province: parts[parts.length - 1],
+      municipality: parts[parts.length - 2]
+    };
+  } else if (parts.length === 2) {
+    return {
+      province: parts[1],
+      municipality: parts[0]
+    };
+  } else {
+    return { province: '', municipality: '' };
+  }
+};
+
+// ---------- Helper: Determine type from name ----------
+const determineType = (name) => {
+  const lower = (name || '').toLowerCase();
+  if (lower.includes('cooperative')) return 'Cooperative';
+  if (lower.includes('association')) return 'Association';
+  return 'Accredited CSO';
+};
+
+// ---------- Advanced parser for no_of_members ----------
+const parseMemberString = (memberStr) => {
+  if (!memberStr) return { total: 0, male: 0, female: 0 };
+
+  let total = 0;
+  let male = 0;
+  let female = 0;
+
+  // First, try to extract total if it's explicitly given (e.g., "538 members", "45;", "139:")
+  const totalMatch = memberStr.match(/(\d+[\d,]*)\s*(?:members?|total|:)/i);
+  if (totalMatch) {
+    total = parseInt(totalMatch[1].replace(/,/g, ''), 10);
+  }
+
+  // Extract male count (case‑insensitive)
+  const maleMatch = memberStr.match(/[Mm][:\-\s]*(\d+)/);
+  if (maleMatch) {
+    male = parseInt(maleMatch[1], 10);
+  }
+
+  // Extract female count
+  const femaleMatch = memberStr.match(/[Ff][:\-\s]*(\d+)/);
+  if (femaleMatch) {
+    female = parseInt(femaleMatch[1], 10);
+  }
+
+  // If no explicit total but male+female sum > 0, use that sum as total
+  if (total === 0 && (male > 0 || female > 0)) {
+    total = male + female;
+  }
+
+  // If still no total, try to extract any leading number (e.g., "32 members")
+  if (total === 0) {
+    const anyNumber = memberStr.match(/^(\d+)/);
+    if (anyNumber) {
+      total = parseInt(anyNumber[1], 10);
+    }
+  }
+
+  return { total, male, female };
+};
+
+// ---------- Map CSO record to cso-farmers format ----------
+const mapCsoToFarmers = (csoRecord) => {
+  const { province: parsedProvince, municipality: parsedMunicipality } = parseAddress(csoRecord.address || '');
+  const { total, male, female } = parseMemberString(csoRecord.no_of_members || '');
+
+  return {
+    province: csoRecord.province || parsedProvince,
+    municipality: parsedMunicipality,
+    name: csoRecord.name_of_association || '',
+    type: determineType(csoRecord.name_of_association),
+    male: male,
+    female: female,
+    total: total,
+    address: csoRecord.address || '',
+    contactPerson: csoRecord.contact_person || '',
+    createdAt: serverTimestamp()
+  };
+};
+
+// ---------- DataTable Component ----------
 const DataTable = ({
   columns,
   data,
@@ -268,7 +354,7 @@ const DataTable = ({
   );
 };
 
-// ---------- Modal Component (unchanged) ----------
+// ---------- Modal Component ----------
 const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   if (!isOpen) return null;
 
@@ -340,8 +426,8 @@ const Accredited = () => {
     scope: 'all',
     hasCertificate: 'all',
     status: 'all',
-    province: 'all',                // selected province (e.g., 'Occidental Mindoro', 'all')
-    expirationStatus: 'all'          // 'all', 'valid', 'expiringSoon'
+    province: 'all',
+    expirationStatus: 'all'
   });
   const [sortConfig, setSortConfig] = useState({
     field: 'no',
@@ -448,6 +534,23 @@ const Accredited = () => {
     return () => clearInterval(interval);
   }, [fetchCSOData]);
 
+  // ---------- Sync a single CSO record to cso-farmers (using same document ID) ----------
+  const syncToCsoFarmers = async (csoId, csoData) => {
+    if (!csoId) return;
+    const farmersData = mapCsoToFarmers(csoData);
+    await setDoc(doc(db, 'cso-farmers', csoId), farmersData, { merge: true });
+  };
+
+  // ---------- Remove from cso-farmers (by same document ID) ----------
+  const removeFromCsoFarmers = async (csoId) => {
+    if (!csoId) return;
+    try {
+      await deleteDoc(doc(db, 'cso-farmers', csoId));
+    } catch (error) {
+      console.error('Error removing from cso-farmers:', error);
+    }
+  };
+
   // ---------- Form input handler ----------
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -473,7 +576,7 @@ const Accredited = () => {
     }
   };
 
-  // ---------- Submit form (Add / Edit) with expiration warning ----------
+  // ---------- Submit form (Add / Edit) with sync to cso-farmers ----------
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -490,13 +593,20 @@ const Accredited = () => {
     }
 
     try {
+      let docRef;
       if (editingId) {
-        const docRef = doc(db, 'cso', editingId);
+        // Update existing CSO
+        docRef = doc(db, 'cso', editingId);
         await updateDoc(docRef, formData);
         setSuccess('CSO record updated successfully!');
+        // Sync to cso-farmers
+        await syncToCsoFarmers(editingId, formData);
       } else {
-        await addDoc(collection(db, 'cso'), formData);
+        // Add new CSO
+        docRef = await addDoc(collection(db, 'cso'), formData);
         setSuccess('CSO record added successfully!');
+        // Sync to cso-farmers
+        await syncToCsoFarmers(docRef.id, formData);
       }
 
       setFormData(initialFormState);
@@ -523,10 +633,14 @@ const Accredited = () => {
     setShowViewModal(true);
   };
 
+  // ---------- Delete with removal from cso-farmers ----------
   const handleDelete = async () => {
     if (!selectedCSO) return;
 
     try {
+      // Delete from cso-farmers first (by same ID)
+      await removeFromCsoFarmers(selectedCSO.id);
+      // Then delete from cso
       await deleteDoc(doc(db, 'cso', selectedCSO.id));
       setSuccess(`${selectedCSO.name_of_association} deleted successfully!`);
       setShowDeleteModal(false);
@@ -759,7 +873,7 @@ const Accredited = () => {
     }
   };
 
-  // ---------- Import from Excel (unchanged) ----------
+  // ---------- Import from Excel with sync to cso-farmers ----------
   const handleImport = async () => {
     if (!importFile) {
       setError('Please select a file to import');
@@ -836,8 +950,12 @@ const Accredited = () => {
             if (!existingSnapshot.empty) {
               const docRef = doc(db, 'cso', existingSnapshot.docs[0].id);
               await updateDoc(docRef, csoRecord);
+              // Sync updated record to cso-farmers
+              await syncToCsoFarmers(existingSnapshot.docs[0].id, csoRecord);
             } else {
-              await addDoc(collection(db, 'cso'), csoRecord);
+              const docRef = await addDoc(collection(db, 'cso'), csoRecord);
+              // Sync new record to cso-farmers
+              await syncToCsoFarmers(docRef.id, csoRecord);
             }
 
             imported++;
@@ -921,12 +1039,10 @@ const Accredited = () => {
       filtered = filtered.filter(item => item.status === filters.status);
     }
 
-    // Province filter: match either province field or address content
     if (filters.province !== 'all') {
       filtered = filtered.filter(item => recordMatchesProvince(item, filters.province));
     }
 
-    // Expiration filter
     if (filters.expirationStatus !== 'all') {
       if (filters.expirationStatus === 'expiringSoon') {
         filtered = filtered.filter(item => isExpiringSoon(item.date_of_expiration));
@@ -1098,10 +1214,9 @@ const Accredited = () => {
     }
   ];
 
-  // ---------- Build list of provinces for dropdown: include all from data plus all MIMAROPA provinces ----------
+  // ---------- Build list of provinces for dropdown ----------
   const provinces = useMemo(() => {
     const fromData = [...new Set(csoData.map(item => item.province).filter(Boolean))];
-    // Add all MIMAROPA provinces (ensuring they appear even if not in data)
     const allProvinces = new Set([...fromData, ...MIMAROPA_PROVINCES]);
     return Array.from(allProvinces).sort();
   }, [csoData]);
@@ -1284,7 +1399,6 @@ const Accredited = () => {
               <option value="Pending">Pending</option>
             </select>
 
-            {/* Province dropdown: includes all MIMAROPA provinces + any others from data */}
             <select
               value={filters.province}
               onChange={(e) => handleFilterChange('province', e.target.value)}
@@ -1296,7 +1410,6 @@ const Accredited = () => {
               ))}
             </select>
 
-            {/* Expiration Filter */}
             <select
               value={filters.expirationStatus}
               onChange={(e) => handleFilterChange('expirationStatus', e.target.value)}
@@ -1485,12 +1598,12 @@ const Accredited = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">No. of Members</label>
                 <input
-                  type="number"
+                  type="text"
                   name="no_of_members"
                   value={formData.no_of_members}
                   onChange={handleInputChange}
                   className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  placeholder="0"
+                  placeholder="e.g., 45; F:17; M:28"
                 />
               </div>
               <div className="md:col-span-2">
