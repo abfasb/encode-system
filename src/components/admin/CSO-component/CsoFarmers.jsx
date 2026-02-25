@@ -114,7 +114,6 @@ const CsoFarmers = () => {
       { key: 'contact', width: 25 },
     ];
 
-    // 2. TITLE ROWS (Rows 1‑4)
     const titleRows = [
       ['LIST OF FARMERS COOPERATIVE/ASSOCIATION ACCREDITED UNDER RCEF'],
       ['REGION: MIMAROPA'],
@@ -237,12 +236,10 @@ const CsoFarmers = () => {
       });
     }
 
-    // 6. Generate and save
     const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), 'Accredited_FCA_MIMAROPA.xlsx');
+    saveAs(new Blob([buffer]), 'List of Farmers Cooperative_Association Accredited in RCEF 2026.xlsx');
   };
 
-  // ---------- DataTable Columns ----------
   const columns = [
     { name: 'Province', selector: row => row.province, sortable: true, wrap: true },
     { name: 'Municipality', selector: row => row.municipality, sortable: true, wrap: true },

@@ -534,7 +534,6 @@ const Accredited = () => {
     return () => clearInterval(interval);
   }, [fetchCSOData]);
 
-  // ---------- Sync a single CSO record to cso-farmers (using same document ID) ----------
   const syncToCsoFarmers = async (csoId, csoData) => {
     if (!csoId) return;
     const farmersData = mapCsoToFarmers(csoData);
@@ -873,7 +872,6 @@ const Accredited = () => {
     }
   };
 
-  // ---------- Import from Excel with sync to cso-farmers ----------
   const handleImport = async () => {
     if (!importFile) {
       setError('Please select a file to import');
@@ -950,11 +948,9 @@ const Accredited = () => {
             if (!existingSnapshot.empty) {
               const docRef = doc(db, 'cso', existingSnapshot.docs[0].id);
               await updateDoc(docRef, csoRecord);
-              // Sync updated record to cso-farmers
               await syncToCsoFarmers(existingSnapshot.docs[0].id, csoRecord);
             } else {
               const docRef = await addDoc(collection(db, 'cso'), csoRecord);
-              // Sync new record to cso-farmers
               await syncToCsoFarmers(docRef.id, csoRecord);
             }
 
