@@ -7,6 +7,7 @@ import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import AdminPage from './pages/AdminPage'
 import ProtectedRoute from './pages/ProtectedRoute'
+import ExcelExport from './components/admin/ExcelExport'
   
 function App() {
   const [count, setCount] = useState(0)
@@ -16,6 +17,7 @@ function App() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/excel" element={<ExcelExport />} />
         <Route path="/admin/*" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
       </Routes>
     </Router>
