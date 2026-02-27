@@ -192,7 +192,6 @@ const CsoFarmers = () => {
       });
     };
 
-    // 5. Group data by province and municipality (sorted)
     const grouped = data.reduce((acc, item) => {
       const province = item.province || 'Unknown Province';
       const municipality = item.municipality || 'Unknown Municipality';
