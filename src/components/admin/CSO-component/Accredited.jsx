@@ -104,12 +104,13 @@ const parseAddress = (address) => {
   }
 };
 
-// ---------- Helper: Determine type from name ----------
-const determineType = (name) => {
+// ---------- Determine specific type from name (matches fullcso-farmers format) ----------
+const getTypeFromName = (name) => {
   const lower = (name || '').toLowerCase();
   if (lower.includes('cooperative')) return 'Cooperative';
-  if (lower.includes('association')) return 'Association';
-  return 'Accredited CSO';
+  if (lower.includes('irrigators association') || lower.includes('irrigators')) return 'Irrigators Association';
+  if (lower.includes('farmers association') || lower.includes('farmers')) return 'Farmers Association';
+  return 'Association'; // default
 };
 
 // ---------- Advanced parser for no_of_members ----------
@@ -154,21 +155,39 @@ const parseMemberString = (memberStr) => {
   return { total, male, female };
 };
 
-// ---------- Map CSO record to cso-farmers format ----------
+// ---------- Map CSO record to fullcso-farmers format ----------
 const mapCsoToFarmers = (csoRecord) => {
   const { province: parsedProvince, municipality: parsedMunicipality } = parseAddress(csoRecord.address || '');
   const { total, male, female } = parseMemberString(csoRecord.no_of_members || '');
 
+  // Interventions default to false (can be edited later)
+  const interventions = {
+    seeds: false,
+    mech: false,
+    credit: false,
+    extn: false
+  };
+
   return {
     province: csoRecord.province || parsedProvince,
     municipality: parsedMunicipality,
+    no: csoRecord.no ? String(csoRecord.no) : null,               // keep as string
     name: csoRecord.name_of_association || '',
-    type: determineType(csoRecord.name_of_association),
-    male: male,
-    female: female,
-    total: total,
+    date_application_received: null,                               // not available in CSO data
+    date_accredited: csoRecord.date_of_issuance || null,
+    date_expiration: csoRecord.date_of_expiration || null,
+    type_fca: getTypeFromName(csoRecord.name_of_association),     // derived from name
+    male_members: male,
+    female_members: female,
+    total_members: total,
+    area_covered: null,                                            // not available
     address: csoRecord.address || '',
-    contactPerson: csoRecord.contact_person || '',
+    contact_person: csoRecord.contact_person || '',
+    contact_no: csoRecord.contact_number || null,
+    interventions: interventions,
+    remarks: null,                                                 // not available
+    certificate_of_accreditation: csoRecord.certificate_of_accreditation || null,
+    submitted_documents: null,                                     // not available
     createdAt: serverTimestamp()
   };
 };
@@ -447,6 +466,23 @@ const Accredited = () => {
     withCertificates: 0
   });
 
+  // ---------- Sync to fullcso-farmers collection ----------
+  const syncToCsoFarmers = async (csoId, csoData) => {
+    if (!csoId) return;
+    const farmersData = mapCsoToFarmers(csoData);
+    await setDoc(doc(db, 'fullcso-farmers', csoId), farmersData, { merge: true });
+  };
+
+  // ---------- Remove from fullcso-farmers (by same document ID) ----------
+  const removeFromCsoFarmers = async (csoId) => {
+    if (!csoId) return;
+    try {
+      await deleteDoc(doc(db, 'fullcso-farmers', csoId));
+    } catch (error) {
+      console.error('Error removing from fullcso-farmers:', error);
+    }
+  };
+
   // ---------- Move a single expired record to cso-expired ----------
   const moveExpiredRecord = async (docId, recordData) => {
     try {
@@ -534,22 +570,6 @@ const Accredited = () => {
     return () => clearInterval(interval);
   }, [fetchCSOData]);
 
-  const syncToCsoFarmers = async (csoId, csoData) => {
-    if (!csoId) return;
-    const farmersData = mapCsoToFarmers(csoData);
-    await setDoc(doc(db, 'cso-farmers', csoId), farmersData, { merge: true });
-  };
-
-  // ---------- Remove from cso-farmers (by same document ID) ----------
-  const removeFromCsoFarmers = async (csoId) => {
-    if (!csoId) return;
-    try {
-      await deleteDoc(doc(db, 'cso-farmers', csoId));
-    } catch (error) {
-      console.error('Error removing from cso-farmers:', error);
-    }
-  };
-
   // ---------- Form input handler ----------
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -575,7 +595,7 @@ const Accredited = () => {
     }
   };
 
-  // ---------- Submit form (Add / Edit) with sync to cso-farmers ----------
+  // ---------- Submit form (Add / Edit) with sync to fullcso-farmers ----------
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -598,13 +618,13 @@ const Accredited = () => {
         docRef = doc(db, 'cso', editingId);
         await updateDoc(docRef, formData);
         setSuccess('CSO record updated successfully!');
-        // Sync to cso-farmers
+        // Sync to fullcso-farmers
         await syncToCsoFarmers(editingId, formData);
       } else {
         // Add new CSO
         docRef = await addDoc(collection(db, 'cso'), formData);
         setSuccess('CSO record added successfully!');
-        // Sync to cso-farmers
+        // Sync to fullcso-farmers
         await syncToCsoFarmers(docRef.id, formData);
       }
 
@@ -632,12 +652,12 @@ const Accredited = () => {
     setShowViewModal(true);
   };
 
-  // ---------- Delete with removal from cso-farmers ----------
+  // ---------- Delete with removal from fullcso-farmers ----------
   const handleDelete = async () => {
     if (!selectedCSO) return;
 
     try {
-      // Delete from cso-farmers first (by same ID)
+      // Delete from fullcso-farmers first (by same ID)
       await removeFromCsoFarmers(selectedCSO.id);
       // Then delete from cso
       await deleteDoc(doc(db, 'cso', selectedCSO.id));
