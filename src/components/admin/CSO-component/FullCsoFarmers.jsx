@@ -117,6 +117,34 @@ const FullCsoFarmers = () => {
     },
   ];
 
+  // ---------- Helper: Convert date like "September 8, 2025" to "MM/DD/YYYY" ----------
+  const formatDateToMMDDYYYY = (dateString) => {
+    if (!dateString) return '';
+    // If it already contains slashes, assume it's already in MM/DD/YYYY format
+    if (dateString.includes('/')) return dateString;
+
+    // Try to parse as a full month name date
+    const months = {
+      january: '01', february: '02', march: '03', april: '04', may: '05', june: '06',
+      july: '07', august: '08', september: '09', october: '10', november: '11', december: '12'
+    };
+    const lower = dateString.toLowerCase();
+    for (const [monthName, monthNum] of Object.entries(months)) {
+      if (lower.includes(monthName)) {
+        // Extract day and year
+        const match = dateString.match(/(\d{1,2})(?:st|nd|rd|th)?,\s*(\d{4})/i);
+        if (match) {
+          const day = match[1];
+          const year = match[2];
+          return `${monthNum}/${day}/${year}`;
+        }
+        break;
+      }
+    }
+    // Fallback: return original if no conversion
+    return dateString;
+  };
+
   // ---------- Excel Export ----------
   const exportToExcel = async () => {
     const workbook = new ExcelJS.Workbook();
@@ -186,7 +214,7 @@ const FullCsoFarmers = () => {
     });
 
     const addProvinceRow = (name) => {
-      const row = worksheet.addRow([name.toUpperCase()]); // always uppercase
+      const row = worksheet.addRow([name.toUpperCase()]);
       worksheet.mergeCells(`A${row.number}:U${row.number}`);
       row.eachCell(cell => {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF92D050' } };
@@ -205,16 +233,16 @@ const FullCsoFarmers = () => {
       });
     };
 
-    // Step 1: Normalize province to uppercase for grouping, but keep original for display?
+    // Group data by province (normalized to uppercase) and then by municipality
     const grouped = {};
     data.forEach(item => {
       const prov = item.province || 'Unknown';
-      const provUpper = prov.toUpperCase(); // normalize for grouping
+      const provUpper = prov.toUpperCase();
       const mun = item.municipality || 'Unknown';
 
       if (!grouped[provUpper]) {
         grouped[provUpper] = {
-          originalName: prov, // keep one original case (first encountered)
+          originalName: prov,
           municipalities: {}
         };
       }
@@ -224,12 +252,10 @@ const FullCsoFarmers = () => {
       grouped[provUpper].municipalities[mun].push(item);
     });
 
-    // Step 2: Sort provinces alphabetically (by normalized name)
     const sortedProvinces = Object.keys(grouped).sort();
 
     sortedProvinces.forEach(provUpper => {
-      // Use the original case or just uppercase? We'll use uppercase for the row.
-      addProvinceRow(provUpper); // already uppercase
+      addProvinceRow(provUpper);
 
       const munObj = grouped[provUpper].municipalities;
       const sortedMunicipalities = Object.keys(munObj).sort();
@@ -237,21 +263,28 @@ const FullCsoFarmers = () => {
       sortedMunicipalities.forEach(mun => {
         addMunicipalityRow(mun);
 
-        // Step 3: Sort items within municipality by the numeric value of 'no'
+        // Sort items within municipality by the original numeric 'no' (optional, but keeps order consistent)
         const sortedItems = [...munObj[mun]].sort((a, b) => {
           const numA = parseInt(a.no, 10) || 0;
           const numB = parseInt(b.no, 10) || 0;
           return numA - numB;
         });
 
+        // Generate sequential number starting at 1 for this municipality
+        let seqNo = 1;
+
         sortedItems.forEach(item => {
+          // Format dates
+          const formattedDateAccredited = formatDateToMMDDYYYY(item.date_accredited);
+          const formattedDateExpiration = formatDateToMMDDYYYY(item.date_expiration);
+
           const row = worksheet.addRow([
             '', // province column blank in detail rows
-            item.no || '',
+            seqNo++, // use sequential number instead of item.no
             item.name || '',
             item.date_application_received || '',
-            item.date_accredited || '',
-            item.date_expiration || '',
+            formattedDateAccredited,
+            formattedDateExpiration,
             item.type_fca || '',
             item.male_members || '',
             item.female_members || '',
