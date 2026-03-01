@@ -163,7 +163,7 @@ const FullCsoFarmers = () => {
     const titleRows = [
       ['LIST OF FARMERS COOPERATIVE/ASSOCIATION ACCREDITED UNDER RCEF'],
       ['REGION: MIMAROPA'],
-      ['As of January 2026'],
+      ['As of March 2026'],
       [''],
     ];
     titleRows.forEach((val, index) => {
