@@ -1,27 +1,27 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { 
-  collection, 
-  getDocs, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  doc, 
-  query, 
+import {
+  collection,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  query,
   orderBy,
-  where 
+  where
 } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import * as XLSXStyle from 'xlsx-js-style';
 import { saveAs } from 'file-saver';
-import { 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Eye, 
-  Download, 
-  Upload, 
-  Search, 
-  ChevronLeft, 
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Eye,
+  Download,
+  Upload,
+  Search,
+  ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
@@ -37,7 +37,6 @@ import {
   User,
   Building,
   Shield,
-  ExternalLink,
   RefreshCw,
   Clock,
   MessageSquare,
@@ -46,6 +45,7 @@ import {
 } from 'lucide-react';
 import { db } from '../../../config/firebase';
 
+// ========== DataTable Component (unchanged) ==========
 const DataTable = ({
   columns,
   data,
@@ -59,9 +59,9 @@ const DataTable = ({
   onRowsPerPageChange
 }) => {
   const handleRowClick = (row, e) => {
-    if (e.target.tagName === 'BUTTON' || 
-        e.target.tagName === 'A' || 
-        e.target.closest('button') || 
+    if (e.target.tagName === 'BUTTON' ||
+        e.target.tagName === 'A' ||
+        e.target.closest('button') ||
         e.target.closest('a')) {
       return;
     }
@@ -114,20 +114,20 @@ const DataTable = ({
               </tr>
             ) : (
               data.map((row) => (
-                <tr 
-                  key={row.id} 
+                <tr
+                  key={row.id}
                   className="hover:bg-gray-50 transition-colors"
                 >
                   {columns.map((column) => (
-                    <td 
-                      key={column.key} 
+                    <td
+                      key={column.key}
                       className="px-6 py-4 whitespace-nowrap text-sm"
                       onClick={(e) => {
                         if (column.key !== 'actions') {
                           handleRowClick(row, e);
                         }
                       }}
-                      style={{ 
+                      style={{
                         cursor: column.key !== 'actions' ? 'pointer' : 'default'
                       }}
                     >
@@ -159,7 +159,7 @@ const DataTable = ({
               Showing {pagination.startIndex + 1} to {Math.min(pagination.endIndex, pagination.total)} of {pagination.total} entries
             </span>
           </div>
-          
+
           <div className="flex items-center space-x-2">
             <button
               onClick={() => onPageChange(1)}
@@ -175,7 +175,7 @@ const DataTable = ({
             >
               <ChevronLeft className="h-4 w-4 text-black" />
             </button>
-            
+
             <div className="flex space-x-1">
               {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
                 let pageNum;
@@ -188,7 +188,7 @@ const DataTable = ({
                 } else {
                   pageNum = pagination.currentPage - 2 + i;
                 }
-                
+
                 return (
                   <button
                     key={pageNum}
@@ -204,7 +204,7 @@ const DataTable = ({
                 );
               })}
             </div>
-            
+
             <button
               onClick={() => onPageChange(pagination.currentPage + 1)}
               disabled={pagination.currentPage === pagination.totalPages}
@@ -226,6 +226,7 @@ const DataTable = ({
   );
 };
 
+// ========== Modal Component (unchanged) ==========
 const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   if (!isOpen) return null;
 
@@ -258,6 +259,22 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   );
 };
 
+// ========== Helper to normalize record (flatten basic_information) ==========
+const normalizeRecord = (doc) => {
+  const data = { id: doc.id, ...doc.data() };
+  if (data.basic_information) {
+    // Promote nested basic_information fields to top level for display
+    return {
+      ...data,
+      ...data.basic_information,
+      // Keep original basic_information for editing
+      _basicInfo: data.basic_information
+    };
+  }
+  return data;
+};
+
+// Initial form state (flat structure for manual entry)
 const initialFormState = {
   no: '',
   name_of_association: '',
@@ -271,10 +288,9 @@ const initialFormState = {
   nature_of_services: '',
   province: '',
   region: 'MIMAROPA',
-  deliberation_status: 'Approved', // Default to Approved for new entries
+  deliberation_status: 'Approved',
   remarks: '',
   date_of_deliberation: '',
-  // Evaluator info (will be filled when moved from evaluation)
   evaluatedBy: '',
   evaluatedById: '',
   evaluatedByRole: '',
@@ -282,6 +298,7 @@ const initialFormState = {
   originalId: ''
 };
 
+// ========== Main Deliberation Component ==========
 const Deliberation = () => {
   const [csoData, setCsoData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -318,6 +335,7 @@ const Deliberation = () => {
     rejected: 0
   });
 
+  // Fetch data and normalize
   const fetchCSOData = useCallback(async () => {
     try {
       setLoading(true);
@@ -325,14 +343,14 @@ const Deliberation = () => {
       const csoCollection = collection(db, 'cso-deliberation');
       const q = query(csoCollection, orderBy('no', 'asc'));
       const querySnapshot = await getDocs(q);
-      
+
       const data = [];
       querySnapshot.forEach((doc) => {
-        data.push({ id: doc.id, ...doc.data() });
+        data.push(normalizeRecord(doc));
       });
-      
+
       setCsoData(data);
-      
+
       const total = data.length;
       const pending = data.filter(item => item.deliberation_status === 'Pending').length;
       const approved = data.filter(item => item.deliberation_status === 'Approved').length;
@@ -353,7 +371,6 @@ const Deliberation = () => {
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
-    
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
@@ -368,12 +385,16 @@ const Deliberation = () => {
         return;
       }
 
+      // Prepare data for Firestore – keep flat structure (or optionally nest)
+      const dataToSave = { ...formData };
+      delete dataToSave.id; // remove id if present
+
       if (editingId) {
         const docRef = doc(db, 'cso-deliberation', editingId);
-        await updateDoc(docRef, formData);
+        await updateDoc(docRef, dataToSave);
         setSuccess('CSO deliberation record updated successfully!');
       } else {
-        await addDoc(collection(db, 'cso-deliberation'), formData);
+        await addDoc(collection(db, 'cso-deliberation'), dataToSave);
         setSuccess('CSO deliberation record added successfully!');
       }
 
@@ -381,7 +402,7 @@ const Deliberation = () => {
       setEditingId(null);
       setShowAddModal(false);
       fetchCSOData();
-      
+
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error('Error saving CSO data:', err);
@@ -390,6 +411,8 @@ const Deliberation = () => {
   };
 
   const handleEdit = (cso) => {
+    // For editing, we need to populate the form with the flat structure.
+    // If the record has nested basic_information, we already flattened it in normalizeRecord.
     setFormData(cso);
     setEditingId(cso.id);
     setShowViewModal(false);
@@ -404,7 +427,7 @@ const Deliberation = () => {
 
   const handleDelete = async () => {
     if (!selectedCSO) return;
-    
+
     try {
       await deleteDoc(doc(db, 'cso-deliberation', selectedCSO.id));
       setSuccess(`${selectedCSO.name_of_association} deleted successfully!`);
@@ -427,7 +450,7 @@ const Deliberation = () => {
     try {
       const mimaropaProvinces = [
         'Occidental Mindoro',
-        'Oriental Mindoro', 
+        'Oriental Mindoro',
         'Marinduque',
         'Palawan',
         'Romblon'
@@ -446,7 +469,7 @@ const Deliberation = () => {
       };
 
       const processedData = csoData.map(item => {
-        const province = item.province === 'Regional' 
+        const province = item.province === 'Regional'
           ? extractProvinceFromAddress(item.address)
           : (item.province || extractProvinceFromAddress(item.address));
         return {
@@ -481,7 +504,6 @@ const Deliberation = () => {
 
       const wb = XLSXStyle.utils.book_new();
 
-      // Styles
       const titleStyle = {
         font: { name: 'Arial', sz: 16, bold: true },
         alignment: { horizontal: "center", vertical: "center" }
@@ -522,12 +544,12 @@ const Deliberation = () => {
       const centerStyle = { ...dataStyle, alignment: { horizontal: "center", vertical: "center" } };
 
       const statusStyle = (status) => {
-        const baseStyle = { 
+        const baseStyle = {
           ...centerStyle,
           font: { name: 'Arial', sz: 11, bold: true }
         };
-        
-        switch(status) {
+
+        switch (status) {
           case 'Approved':
             return { ...baseStyle, fill: { fgColor: { rgb: "D9F2D9" }, patternType: "solid" } };
           case 'Rejected':
@@ -544,22 +566,22 @@ const Deliberation = () => {
 
       wsData.push(['LIST OF CSOS UNDER DELIBERATION']);
       wsData.push([`as of ${currentMonth} ${currentYear}`]);
-      wsData.push([]); 
+      wsData.push([]);
 
-      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 14 } }); // Increased columns for evaluator info
+      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 14 } });
       merges.push({ s: { r: 1, c: 0 }, e: { r: 1, c: 14 } });
 
-      // Main Header - added evaluator columns
+      // Main Header
       wsData.push([
-        'NO.', 
-        'NAME OF THE ASSOCIATION', 
-        'CONTACT PERSON', 
-        'POSITION', 
-        'CONTACT NUMBER', 
-        'EMAIL ADDRESS', 
-        'NO. OF MEMBERS', 
-        'ADDRESS', 
-        'SCOPE', 
+        'NO.',
+        'NAME OF THE ASSOCIATION',
+        'CONTACT PERSON',
+        'POSITION',
+        'CONTACT NUMBER',
+        'EMAIL ADDRESS',
+        'NO. OF MEMBERS',
+        'ADDRESS',
+        'SCOPE',
         'NATURE OF SERVICES',
         'DELIBERATION STATUS',
         'REMARKS',
@@ -592,8 +614,8 @@ const Deliberation = () => {
             item.deliberation_status || '',
             item.remarks || '',
             item.date_of_deliberation || '',
-            item.evaluatedBy || '',          // New column
-            item.evaluatedAt ? new Date(item.evaluatedAt).toLocaleDateString() : '' // New column
+            item.evaluatedBy || '',
+            item.evaluatedAt ? new Date(item.evaluatedAt).toLocaleDateString() : ''
           ]);
           currentRow++;
         });
@@ -675,7 +697,7 @@ const Deliberation = () => {
     try {
       setImportProgress(10);
       const reader = new FileReader();
-      
+
       reader.onload = async (e) => {
         try {
           setImportProgress(30);
@@ -690,19 +712,18 @@ const Deliberation = () => {
 
           for (let i = 0; i < jsonData.length; i++) {
             const item = jsonData[i];
-            
-            // Extract province from address if province field is Regional
+
             let province = item['PROVINCE'] || '';
             if (province === 'Regional' && item['ADDRESS']) {
               const address = item['ADDRESS'];
               const mimaropaProvinces = [
                 'Occidental Mindoro',
-                'Oriental Mindoro', 
+                'Oriental Mindoro',
                 'Marinduque',
                 'Palawan',
                 'Romblon'
               ];
-              
+
               for (const p of mimaropaProvinces) {
                 if (address.toLowerCase().includes(p.toLowerCase())) {
                   province = p;
@@ -710,7 +731,7 @@ const Deliberation = () => {
                 }
               }
             }
-            
+
             const csoRecord = {
               no: item['NO.']?.toString() || '',
               name_of_association: item['NAME OF THE ASSOCIATION'] || '',
@@ -733,7 +754,7 @@ const Deliberation = () => {
 
             const existingQuery = query(collection(db, 'cso-deliberation'), where('no', '==', csoRecord.no));
             const existingSnapshot = await getDocs(existingQuery);
-            
+
             if (!existingSnapshot.empty) {
               const docRef = doc(db, 'cso-deliberation', existingSnapshot.docs[0].id);
               await updateDoc(docRef, csoRecord);
@@ -762,7 +783,7 @@ const Deliberation = () => {
           setImportProgress(0);
         }
       };
-      
+
       reader.readAsArrayBuffer(importFile);
     } catch (err) {
       console.error('Error importing data:', err);
@@ -799,7 +820,7 @@ const Deliberation = () => {
 
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
-      filtered = filtered.filter(item => 
+      filtered = filtered.filter(item =>
         item.name_of_association?.toLowerCase().includes(searchLower) ||
         item.contact_person?.toLowerCase().includes(searchLower) ||
         item.address?.toLowerCase().includes(searchLower) ||
@@ -851,6 +872,7 @@ const Deliberation = () => {
     }));
   }, [filteredData.length, pagination.rowsPerPage]);
 
+  // Columns – now using flattened fields (name_of_association etc.)
   const columns = [
     {
       key: 'no',
@@ -923,6 +945,24 @@ const Deliberation = () => {
               {row.no_of_members} members
             </div>
           )}
+        </div>
+      )
+    },
+    {
+      key: 'address',
+      header: 'Address',
+      render: (row) => (
+        <div className="text-sm text-gray-700 max-w-xs truncate" title={row.address}>
+          {row.address || 'N/A'}
+        </div>
+      )
+    },
+    {
+      key: 'date_of_deliberation',
+      header: 'Deliberation Date',
+      render: (row) => (
+        <div className="text-sm text-gray-700">
+          {row.date_of_deliberation ? new Date(row.date_of_deliberation).toLocaleDateString() : 'Not set'}
         </div>
       )
     },
@@ -1005,6 +1045,7 @@ const Deliberation = () => {
 
   const statusOptions = ['Pending', 'Approved', 'Rejected'];
 
+  // ========== Render ==========
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="mb-8">
@@ -1013,7 +1054,7 @@ const Deliberation = () => {
             <h1 className="text-3xl md:text-4xl font-bold text-gray-900">CSO Deliberation System</h1>
             <p className="text-gray-600 mt-2">Manage Civil Society Organizations Under Deliberation in MIMAROPA Region</p>
           </div>
-          
+
           <div className="flex flex-wrap gap-3">
             <button
               onClick={() => setShowAddModal(true)}
@@ -1022,7 +1063,7 @@ const Deliberation = () => {
               <Plus className="h-5 w-5 mr-2" />
               Add New Deliberation
             </button>
-            
+
             <button
               onClick={exportToExcelWithBeautifulFormatting}
               className="inline-flex items-center px-4 py-2.5 bg-green-600 text-white font-semibold rounded-xl shadow-lg hover:bg-green-700 transition-colors"
@@ -1030,8 +1071,7 @@ const Deliberation = () => {
               <Download className="h-5 w-5 mr-2" />
               Export Excel
             </button>
-            
-            
+
             <button
               onClick={fetchCSOData}
               className="inline-flex items-center px-4 py-2.5 bg-gray-600 text-white font-semibold rounded-xl shadow-lg hover:bg-gray-700 transition-colors"
@@ -1043,6 +1083,7 @@ const Deliberation = () => {
         </div>
       </div>
 
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <div className="bg-blue-500 rounded-2xl shadow-xl p-6 text-white">
           <div className="flex items-center justify-between">
@@ -1056,7 +1097,7 @@ const Deliberation = () => {
             <p className="text-blue-100 text-sm">All deliberation cases</p>
           </div>
         </div>
-        
+
         <div className="bg-yellow-500 rounded-2xl shadow-xl p-6 text-white">
           <div className="flex items-center justify-between">
             <div>
@@ -1069,7 +1110,7 @@ const Deliberation = () => {
             <p className="text-yellow-100 text-sm">{Math.round((stats.pending / stats.total) * 100) || 0}% of total</p>
           </div>
         </div>
-        
+
         <div className="bg-green-500 rounded-2xl shadow-xl p-6 text-white">
           <div className="flex items-center justify-between">
             <div>
@@ -1082,7 +1123,7 @@ const Deliberation = () => {
             <p className="text-green-100 text-sm">{Math.round((stats.approved / stats.total) * 100) || 0}% approved rate</p>
           </div>
         </div>
-        
+
         <div className="bg-red-500 rounded-2xl shadow-xl p-6 text-white">
           <div className="flex items-center justify-between">
             <div>
@@ -1097,6 +1138,7 @@ const Deliberation = () => {
         </div>
       </div>
 
+      {/* Error/Success */}
       {error && (
         <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-lg">
           <div className="flex items-center">
@@ -1121,6 +1163,7 @@ const Deliberation = () => {
         </div>
       )}
 
+      {/* Search & Filter */}
       <div className="mb-6 bg-white rounded-2xl shadow-lg p-6">
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1">
@@ -1775,7 +1818,7 @@ const Deliberation = () => {
                 {importProgress > 0 && (
                   <div className="space-y-2">
                     <div className="w-full bg-gray-200 rounded-full h-2.5">
-                      <div 
+                      <div
                         className="bg-green-600 h-2.5 rounded-full transition-all duration-300"
                         style={{ width: `${importProgress}%` }}
                       ></div>
