@@ -298,12 +298,11 @@ const Deferred = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [editingId, setEditingId] = useState(null);           // docId of the province document
-  const [editingIndex, setEditingIndex] = useState(null);    // index in associations array
+  const [editingId, setEditingId] = useState(null);          
+  const [editingIndex, setEditingIndex] = useState(null);    
   const [selectedApplication, setSelectedApplication] = useState(null);
   const [formData, setFormData] = useState(initialFormState);
   
-  // ---------- UI States ----------
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({
     province: 'all'
