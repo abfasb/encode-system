@@ -29,10 +29,12 @@ import {
   FiDownload,
   FiChevronRight,
   FiHome,
+  FiCheckSquare,
+  FiSquare,
 } from "react-icons/fi";
 
 const UploadCso = () => {
-  const [currentPath, setCurrentPath] = useState(""); // empty = root
+  const [currentPath, setCurrentPath] = useState(""); 
   const [pathSegments, setPathSegments] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -41,6 +43,47 @@ const UploadCso = () => {
   const [newFolderName, setNewFolderName] = useState("");
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
+  
+  // ============== NEW: Multi‑select state ==============
+  const [selectedItems, setSelectedItems] = useState([]); // array of item ids
+
+  // ==================== HELPER: Robust File Delete ====================
+  /**
+   * Deletes a file from Firebase Storage. If the file doesn't exist (404),
+   * it's treated as success so the UI doesn't break.
+   * @param {string} storagePath - The full path in Storage (e.g., 'csoUploads/folder/file.pdf')
+   * @returns {Promise<{success: boolean, message: string}>}
+   */
+  const deleteFile = async (storagePath) => {
+    if (!storagePath || typeof storagePath !== 'string') {
+      console.warn('deleteFile called with invalid path:', storagePath);
+      return { success: false, message: 'Invalid file path' };
+    }
+
+    const fileRef = ref(storage, storagePath);
+
+    try {
+      await deleteObject(fileRef);
+      console.log(`✅ File deleted: ${storagePath}`);
+      return { success: true, message: 'File deleted' };
+    } catch (error) {
+      switch (error.code) {
+        case 'storage/object-not-found':
+          console.log(`⚠️ File not found, assuming already deleted: ${storagePath}`);
+          return { success: true, message: 'File already deleted' };
+        case 'storage/unauthorized':
+          console.error(`🚫 Permission denied for: ${storagePath}`, error);
+          return { success: false, message: 'Permission denied' };
+        case 'storage/canceled':
+          console.log('⏹️ Delete canceled');
+          return { success: false, message: 'Canceled' };
+        default:
+          console.error(`❌ Unexpected error deleting ${storagePath}:`, error);
+          return { success: false, message: error.message || 'Unknown error' };
+      }
+    }
+  };
+  // =====================================================================
 
   // Fetch items for the current path
   const fetchItems = useCallback(async () => {
@@ -58,6 +101,8 @@ const UploadCso = () => {
         ...doc.data(),
       }));
       setItems(fetched);
+      // Clear selection when folder changes
+      setSelectedItems([]);
     } catch (error) {
       if (
         error.code === "failed-precondition" ||
@@ -81,6 +126,7 @@ const UploadCso = () => {
             return a.type === "folder" ? -1 : 1;
           });
           setItems(fetched);
+          setSelectedItems([]);
         } catch (fallbackError) {
           console.error("Fallback query also failed:", fallbackError);
           setItems([]);
@@ -131,7 +177,7 @@ const UploadCso = () => {
 
       setNewFolderName("");
       setShowNewFolderInput(false);
-      fetchItems(); // Refresh the list
+      fetchItems();
     } catch (error) {
       console.error("Create folder error:", error);
       alert("Failed to create folder");
@@ -172,7 +218,7 @@ const UploadCso = () => {
 
       setSelectedFile(null);
       document.getElementById("file-upload").value = "";
-      fetchItems(); // Refresh the list
+      fetchItems();
     } catch (error) {
       console.error("Upload error:", error);
       alert("Upload failed");
@@ -181,7 +227,7 @@ const UploadCso = () => {
     }
   };
 
-  // Recursively delete a folder and its contents
+  // Recursively delete a folder and its contents (using robust deleteFile)
   const deleteFolderRecursive = async (folderPath) => {
     const q = query(
       collection(db, "csoUploads"),
@@ -193,14 +239,13 @@ const UploadCso = () => {
       if (child.type === "folder") {
         await deleteFolderRecursive(child.path);
       } else if (child.type === "file" && child.storagePath) {
-        const storageRef = ref(storage, child.storagePath);
-        await deleteObject(storageRef);
+        await deleteFile(child.storagePath);
       }
       await deleteDoc(doc(db, "csoUploads", childDoc.id));
     }
   };
 
-  // Delete an item (file or folder)
+  // Delete an item (file or folder) – using deleteFile for files
   const deleteItem = async (item) => {
     if (!window.confirm(`Are you sure you want to delete "${item.name}"?`)) {
       return;
@@ -208,28 +253,87 @@ const UploadCso = () => {
 
     try {
       if (item.type === "file") {
-        if (item.storagePath) {
-          const storageRef = ref(storage, item.storagePath);
-          await deleteObject(storageRef);
+        const storageResult = await deleteFile(item.storagePath);
+        if (!storageResult.success) {
+          alert(`Storage delete failed: ${storageResult.message}`);
+          return;
         }
         await deleteDoc(doc(db, "csoUploads", item.id));
       } else {
         await deleteFolderRecursive(item.path);
         await deleteDoc(doc(db, "csoUploads", item.id));
 
-        // If we deleted the current folder, navigate to parent
         if (item.path === currentPath) {
           const parentPath = currentPath.split("/").slice(0, -1).join("/");
           setCurrentPath(parentPath);
-          return; // fetchItems will be triggered by the path change
+          return;
         }
       }
-      fetchItems(); // Refresh the list (if we didn't navigate)
+      fetchItems();
     } catch (error) {
       console.error("Delete error:", error);
       alert("Delete failed");
     }
   };
+
+  // ============== NEW: Selection functions ==============
+  const toggleSelectItem = (itemId) => {
+    setSelectedItems(prev =>
+      prev.includes(itemId)
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedItems.length === items.length) {
+      setSelectedItems([]);
+    } else {
+      setSelectedItems(items.map(item => item.id));
+    }
+  };
+
+  // Delete all selected items
+  const deleteSelected = async () => {
+    if (selectedItems.length === 0) return;
+    const confirmMsg = `Delete ${selectedItems.length} selected item(s)?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    // Show some visual feedback (optional)
+    // We'll just loop through and delete each
+    for (const itemId of selectedItems) {
+      const item = items.find(i => i.id === itemId);
+      if (!item) continue;
+
+      try {
+        if (item.type === "file") {
+          const storageResult = await deleteFile(item.storagePath);
+          if (storageResult.success) {
+            await deleteDoc(doc(db, "csoUploads", item.id));
+          } else {
+            console.warn(`Skipping Firestore delete for ${item.name} due to storage error:`, storageResult.message);
+          }
+        } else {
+          // Folder: recursive delete
+          await deleteFolderRecursive(item.path);
+          await deleteDoc(doc(db, "csoUploads", item.id));
+
+          // If we deleted the current folder, we will navigate, but we can't easily
+          // handle multiple folders here. Instead, we'll just let the loop continue;
+          // after the first folder deletion, subsequent items might have been already
+          // removed by the recursive call, but our deleteFile handles missing files.
+          // It's safe but may produce warnings. We can live with that.
+        }
+      } catch (error) {
+        console.error(`Error deleting ${item.name}:`, error);
+      }
+    }
+
+    // Clear selection and refresh
+    setSelectedItems([]);
+    fetchItems();
+  };
+  // ======================================================
 
   // Recursively update paths of descendants after rename
   const updateDescendantPaths = async (oldBasePath, newBasePath) => {
@@ -301,7 +405,6 @@ const UploadCso = () => {
           });
         }
       } else {
-        // It's a folder
         await updateDoc(doc(db, "csoUploads", item.id), {
           name: newName,
           path: newPath,
@@ -309,13 +412,12 @@ const UploadCso = () => {
         });
         await updateDescendantPaths(item.path, newPath);
 
-        // If we renamed the current folder, update currentPath
         if (item.path === currentPath) {
           setCurrentPath(newPath);
-          return; // fetchItems will be triggered by path change
+          return;
         }
       }
-      fetchItems(); // Refresh the list (if we didn't navigate)
+      fetchItems();
     } catch (error) {
       console.error("Rename error:", error);
       alert("Rename failed");
@@ -451,6 +553,29 @@ const UploadCso = () => {
           </div>
         </div>
 
+        {/* Selection Toolbar (appears when items are selected) */}
+        {selectedItems.length > 0 && (
+          <div className="px-8 py-3 bg-indigo-900/40 border-t border-indigo-500/50 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="text-white">
+                <strong>{selectedItems.length}</strong> item(s) selected
+              </span>
+              <button
+                onClick={toggleSelectAll}
+                className="text-white/80 hover:text-white text-sm underline"
+              >
+                {selectedItems.length === items.length ? 'Deselect all' : 'Select all'}
+              </button>
+            </div>
+            <button
+              onClick={deleteSelected}
+              className="flex items-center gap-2 px-5 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl transition-all"
+            >
+              <FiTrash2 /> Delete Selected
+            </button>
+          </div>
+        )}
+
         {/* New Folder Input */}
         {showNewFolderInput && (
           <div className="px-8 py-4 bg-white/5 border-t border-white/10">
@@ -532,6 +657,29 @@ const UploadCso = () => {
                     ${viewMode === "grid" ? "p-5 flex flex-col items-center text-center" : "p-4 flex items-center gap-4"}
                   `}
                 >
+                  {/* Selection Checkbox – always visible, positioned appropriately */}
+                  <div
+                    className={`
+                      ${viewMode === "grid" 
+                        ? "absolute top-2 left-2 z-10" 
+                        : "flex-shrink-0"}
+                    `}
+                  >
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSelectItem(item.id);
+                      }}
+                      className="text-white/70 hover:text-white focus:outline-none"
+                    >
+                      {selectedItems.includes(item.id) ? (
+                        <FiCheckSquare size={viewMode === "grid" ? 20 : 18} />
+                      ) : (
+                        <FiSquare size={viewMode === "grid" ? 20 : 18} />
+                      )}
+                    </button>
+                  </div>
+
                   {/* Icon */}
                   {item.type === "folder" ? (
                     <button
@@ -553,7 +701,7 @@ const UploadCso = () => {
                     </button>
                   )}
 
-                  {/* Name & Details - Improved truncation */}
+                  {/* Name & Details */}
                   <div className={`${viewMode === "grid" ? "w-full overflow-hidden px-1" : "flex-1 min-w-0"}`}>
                     <p className="text-white font-medium truncate" title={item.name}>
                       {item.name}
