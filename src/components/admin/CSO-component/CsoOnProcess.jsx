@@ -62,6 +62,7 @@ import {
 } from 'lucide-react';
 import { db } from '../../../config/firebase';
 
+// ========== DataTable Component ==========
 const DataTable = ({
   columns,
   data,
@@ -242,6 +243,7 @@ const DataTable = ({
   );
 };
 
+// ========== Modal Component ==========
 const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   if (!isOpen) return null;
 
@@ -275,6 +277,7 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   );
 };
 
+// ========== Initial Form State ==========
 const initialFormState = {
   province: '',
   no: '',
@@ -322,6 +325,7 @@ const initialFormState = {
   remarks: ''
 };
 
+// ========== Main Component ==========
 const CsoOnProcess = () => {
   const [csoData, setCsoData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -358,13 +362,77 @@ const CsoOnProcess = () => {
     pending_review: 0
   });
 
-  // ✅ FETCH – works with flat documents (one doc per association)
+  // ========== Helper: Check if all 18 documents are complete ==========
+  const isDocumentComplete = (docReqs) => {
+    if (!docReqs) return false;
+    const booleanFields = [
+      'accomplished_and_notarized_application_form',
+      'organizational_set_up',
+      'brief_history',
+      'list_of_projects_received_2022_2024',
+      'accomplishment_report_2022_2024',
+      'biodata_of_the_chairperson',
+      'ffedis_registration',
+      'mayors_permit',
+      'bir_registration',
+      'certificate_of_registration_dole_cda_sec',
+      'cert_of_good_standing_from_mayor',
+      'certificate_of_compliance_from_cda_for_coops_only',
+      'notarized_omnibus_sworn_statement',
+      'notarized_secretarys_certificate',
+      'articles_of_incorporation_cooperation_by_laws_and_amendments_if_any',
+      '2_year_financial_statements',
+      'certificate_of_good_standing_from_various_government_agencies',
+      'certification_of_no_projects_received_from_gas'
+    ];
+    return booleanFields.every(field => docReqs[field] === true);
+  };
+
+  // ========== Sync complete records to evaluation collection ==========
+  const syncCompleteToEvaluation = useCallback(async () => {
+    try {
+      // Get all CSO-on-Process records
+      const csoCollection = collection(db, 'cso-on-process');
+      const csoSnapshot = await getDocs(csoCollection);
+      const csoRecords = [];
+      csoSnapshot.forEach(doc => csoRecords.push({ id: doc.id, ...doc.data() }));
+
+      // Get all existing evaluation records (to check duplicates)
+      const evalCollection = collection(db, 'cso-evaluation');
+      const evalSnapshot = await getDocs(evalCollection);
+      const evalRecords = new Map();
+      evalSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.originalId) evalRecords.set(data.originalId, doc.id);
+      });
+
+      for (const record of csoRecords) {
+        if (isDocumentComplete(record.documentary_requirements)) {
+          // If not already in evaluation, copy it
+          if (!evalRecords.has(record.id)) {
+            const evaluationData = {
+              ...record,
+              originalId: record.id,
+              movedToEvaluationAt: new Date().toISOString()
+            };
+            delete evaluationData.id;
+            await addDoc(collection(db, 'cso-evaluation'), evaluationData);
+            console.log(`Copied ${record.basic_information?.name_of_association} to evaluation.`);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error syncing to evaluation:', err);
+    }
+  }, []);
+
+  // ========== Fetch CSO Data ==========
   const fetchCSOData = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
       const csoCollection = collection(db, 'cso-on-process');
-      const q = query(csoCollection, orderBy('no', 'asc')); // works because each doc has a 'no' field
+      const q = query(csoCollection, orderBy('no', 'asc'));
       const querySnapshot = await getDocs(q);
 
       const data = [];
@@ -377,29 +445,9 @@ const CsoOnProcess = () => {
       const total = data.length;
       const for_deliberation = data.filter(item => item.for_deliberation === true).length;
 
-      const completed_documents = data.filter(item => {
-        const docReqs = item.documentary_requirements || {};
-        return (
-          docReqs.accomplished_and_notarized_application_form &&
-          docReqs.organizational_set_up &&
-          docReqs.brief_history &&
-          docReqs.list_of_projects_received_2022_2024 &&
-          docReqs.accomplishment_report_2022_2024 &&
-          docReqs.biodata_of_the_chairperson &&
-          docReqs.ffedis_registration &&
-          docReqs.mayors_permit &&
-          docReqs.bir_registration &&
-          docReqs.certificate_of_registration_dole_cda_sec &&
-          docReqs.cert_of_good_standing_from_mayor &&
-          docReqs.certificate_of_compliance_from_cda_for_coops_only &&
-          docReqs.notarized_omnibus_sworn_statement &&
-          docReqs.notarized_secretarys_certificate &&
-          docReqs.articles_of_incorporation_cooperation_by_laws_and_amendments_if_any &&
-          docReqs["2_year_financial_statements"] &&
-          docReqs.certificate_of_good_standing_from_various_government_agencies &&
-          docReqs.certification_of_no_projects_received_from_gas
-        );
-      }).length;
+      const completed_documents = data.filter(item =>
+        isDocumentComplete(item.documentary_requirements)
+      ).length;
 
       const pending_review = data.filter(item => {
         const proc = item.process || {};
@@ -412,18 +460,22 @@ const CsoOnProcess = () => {
       }).length;
 
       setStats({ total, for_deliberation, completed_documents, pending_review });
+
+      // After fetching, sync complete records to evaluation
+      await syncCompleteToEvaluation();
     } catch (err) {
       console.error('Error fetching CSO data:', err);
       setError('Failed to load data. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [syncCompleteToEvaluation]);
 
   useEffect(() => {
     fetchCSOData();
   }, [fetchCSOData]);
 
+  // ========== Input Change Handler ==========
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
 
@@ -466,6 +518,7 @@ const CsoOnProcess = () => {
     }
   };
 
+  // ========== Submit Handler ==========
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -486,7 +539,7 @@ const CsoOnProcess = () => {
       setFormData(initialFormState);
       setEditingId(null);
       setShowAddModal(false);
-      fetchCSOData();
+      await fetchCSOData(); // includes sync to evaluation
 
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
@@ -495,6 +548,7 @@ const CsoOnProcess = () => {
     }
   };
 
+  // ========== Edit Handler ==========
   const handleEdit = (cso) => {
     setFormData(cso);
     setEditingId(cso.id);
@@ -502,12 +556,14 @@ const CsoOnProcess = () => {
     setShowAddModal(true);
   };
 
+  // ========== View Handler ==========
   const handleView = (cso) => {
     setSelectedCSO(cso);
     setShowAddModal(false);
     setShowViewModal(true);
   };
 
+  // ========== Delete Handler ==========
   const handleDelete = async () => {
     if (!selectedCSO) return;
 
@@ -515,7 +571,7 @@ const CsoOnProcess = () => {
       await deleteDoc(doc(db, 'cso-on-process', selectedCSO.id));
       setSuccess(`${selectedCSO.basic_information.name_of_association} deleted successfully!`);
       setShowDeleteModal(false);
-      fetchCSOData();
+      await fetchCSOData(); // includes sync to evaluation
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error('Error deleting CSO:', err);
@@ -523,12 +579,14 @@ const CsoOnProcess = () => {
     }
   };
 
+  // ========== Open Delete Modal ==========
   const openDeleteModal = (cso) => {
     setSelectedCSO(cso);
     setShowViewModal(false);
     setShowDeleteModal(true);
   };
 
+  // ========== Export to Excel ==========
   const exportToExcelWithBeautifulFormatting = async () => {
     try {
       const now = new Date();
@@ -888,6 +946,7 @@ const CsoOnProcess = () => {
     }
   };
 
+  // ========== Import Handler ==========
   const handleImport = async () => {
     if (!importFile) {
       setError('Please select a file to import');
@@ -996,7 +1055,7 @@ const CsoOnProcess = () => {
             setImportProgress(0);
             setShowImportModal(false);
             setSuccess(`${imported} records imported successfully!`);
-            fetchCSOData();
+            fetchCSOData(); // includes sync to evaluation
             setTimeout(() => setSuccess(''), 3000);
           }, 500);
 
@@ -1015,6 +1074,7 @@ const CsoOnProcess = () => {
     }
   };
 
+  // ========== Sort Handler ==========
   const handleSort = (field) => {
     setSortConfig(prev => ({
       field,
@@ -1022,6 +1082,7 @@ const CsoOnProcess = () => {
     }));
   };
 
+  // ========== Filter Handlers ==========
   const handleFilterChange = (filterName, value) => {
     setFilters(prev => ({ ...prev, [filterName]: value }));
     setPagination(prev => ({ ...prev, currentPage: 1 }));
@@ -1035,6 +1096,7 @@ const CsoOnProcess = () => {
     setPagination(prev => ({ ...prev, rowsPerPage: rows, currentPage: 1 }));
   };
 
+  // ========== Filtered Data ==========
   const filteredData = useMemo(() => {
     let filtered = [...csoData];
 
@@ -1089,6 +1151,7 @@ const CsoOnProcess = () => {
     }));
   }, [filteredData.length, pagination.rowsPerPage]);
 
+  // ========== Table Columns ==========
   const columns = [
     {
       key: 'association',
@@ -1229,6 +1292,7 @@ const CsoOnProcess = () => {
     </label>
   );
 
+  // ========== Render ==========
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="mb-8">
@@ -2132,6 +2196,7 @@ const CsoOnProcess = () => {
         </div>
       </Modal>
 
+      {/* IMPORT MODAL */}
       <Modal
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
