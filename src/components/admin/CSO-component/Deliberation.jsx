@@ -271,9 +271,15 @@ const initialFormState = {
   nature_of_services: '',
   province: '',
   region: 'MIMAROPA',
-  deliberation_status: 'Pending',
+  deliberation_status: 'Approved', // Default to Approved for new entries
   remarks: '',
-  date_of_deliberation: ''
+  date_of_deliberation: '',
+  // Evaluator info (will be filled when moved from evaluation)
+  evaluatedBy: '',
+  evaluatedById: '',
+  evaluatedByRole: '',
+  evaluatedAt: '',
+  originalId: ''
 };
 
 const Deliberation = () => {
@@ -540,10 +546,10 @@ const Deliberation = () => {
       wsData.push([`as of ${currentMonth} ${currentYear}`]);
       wsData.push([]); 
 
-      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 12 } });
-      merges.push({ s: { r: 1, c: 0 }, e: { r: 1, c: 12 } });
+      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 14 } }); // Increased columns for evaluator info
+      merges.push({ s: { r: 1, c: 0 }, e: { r: 1, c: 14 } });
 
-      // Main Header
+      // Main Header - added evaluator columns
       wsData.push([
         'NO.', 
         'NAME OF THE ASSOCIATION', 
@@ -557,16 +563,18 @@ const Deliberation = () => {
         'NATURE OF SERVICES',
         'DELIBERATION STATUS',
         'REMARKS',
-        'DATE OF DELIBERATION'
+        'DATE OF DELIBERATION',
+        'EVALUATED BY',
+        'EVALUATED AT'
       ]);
 
       let currentRow = 4;
 
       sortedProvinces.forEach(province => {
-        const pRow = Array(13).fill('');
+        const pRow = Array(15).fill('');
         pRow[0] = province.toUpperCase();
         wsData.push(pRow);
-        merges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: 12 } });
+        merges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: 14 } });
         currentRow++;
 
         groupedData[province].forEach(item => {
@@ -583,30 +591,34 @@ const Deliberation = () => {
             item.nature_of_services || '',
             item.deliberation_status || '',
             item.remarks || '',
-            item.date_of_deliberation || ''
+            item.date_of_deliberation || '',
+            item.evaluatedBy || '',          // New column
+            item.evaluatedAt ? new Date(item.evaluatedAt).toLocaleDateString() : '' // New column
           ]);
           currentRow++;
         });
-        wsData.push(Array(13).fill(''));
+        wsData.push(Array(15).fill(''));
         currentRow++;
       });
 
       const ws = XLSXStyle.utils.aoa_to_sheet(wsData);
 
       ws['!cols'] = [
-        { wch: 8 },  // NO.
-        { wch: 40 }, // NAME OF THE ASSOCIATION
-        { wch: 25 }, // CONTACT PERSON
-        { wch: 20 }, // POSITION
-        { wch: 18 }, // CONTACT NUMBER
-        { wch: 30 }, // EMAIL ADDRESS
-        { wch: 15 }, // NO. OF MEMBERS
-        { wch: 45 }, // ADDRESS
-        { wch: 15 }, // SCOPE
-        { wch: 35 }, // NATURE OF SERVICES
-        { wch: 20 }, // DELIBERATION STATUS
-        { wch: 40 }, // REMARKS
-        { wch: 20 }  // DATE OF DELIBERATION
+        { wch: 8 },   // NO.
+        { wch: 40 },  // NAME OF THE ASSOCIATION
+        { wch: 25 },  // CONTACT PERSON
+        { wch: 20 },  // POSITION
+        { wch: 18 },  // CONTACT NUMBER
+        { wch: 30 },  // EMAIL ADDRESS
+        { wch: 15 },  // NO. OF MEMBERS
+        { wch: 45 },  // ADDRESS
+        { wch: 15 },  // SCOPE
+        { wch: 35 },  // NATURE OF SERVICES
+        { wch: 20 },  // DELIBERATION STATUS
+        { wch: 40 },  // REMARKS
+        { wch: 20 },  // DATE OF DELIBERATION
+        { wch: 25 },  // EVALUATED BY
+        { wch: 20 }   // EVALUATED AT
       ];
 
       ws['!rows'] = wsData.map((row, i) => {
@@ -712,9 +724,11 @@ const Deliberation = () => {
               region: 'MIMAROPA',
               scope: item['SCOPE'] || 'Regional',
               nature_of_services: item['NATURE OF SERVICES'] || '',
-              deliberation_status: item['DELIBERATION STATUS'] || 'Pending',
+              deliberation_status: item['DELIBERATION STATUS'] || 'Approved',
               remarks: item['REMARKS'] || '',
-              date_of_deliberation: item['DATE OF DELIBERATION'] || ''
+              date_of_deliberation: item['DATE OF DELIBERATION'] || '',
+              evaluatedBy: item['EVALUATED BY'] || '',
+              evaluatedAt: item['EVALUATED AT'] || ''
             };
 
             const existingQuery = query(collection(db, 'cso-deliberation'), where('no', '==', csoRecord.no));
@@ -790,7 +804,8 @@ const Deliberation = () => {
         item.contact_person?.toLowerCase().includes(searchLower) ||
         item.address?.toLowerCase().includes(searchLower) ||
         item.province?.toLowerCase().includes(searchLower) ||
-        item.remarks?.toLowerCase().includes(searchLower)
+        item.remarks?.toLowerCase().includes(searchLower) ||
+        item.evaluatedBy?.toLowerCase().includes(searchLower)
       );
     }
 
@@ -907,6 +922,27 @@ const Deliberation = () => {
               <Users className="h-3 w-3 mr-1" />
               {row.no_of_members} members
             </div>
+          )}
+        </div>
+      )
+    },
+    {
+      key: 'evaluator',
+      header: 'Evaluator',
+      render: (row) => (
+        <div className="space-y-1">
+          {row.evaluatedBy ? (
+            <>
+              <div className="text-sm font-medium text-gray-900">{row.evaluatedBy}</div>
+              <div className="text-xs text-gray-500">{row.evaluatedByRole}</div>
+              {row.evaluatedAt && (
+                <div className="text-xs text-gray-400">
+                  {new Date(row.evaluatedAt).toLocaleDateString()}
+                </div>
+              )}
+            </>
+          ) : (
+            <span className="text-sm text-gray-400">Manual entry</span>
           )}
         </div>
       )
@@ -1092,7 +1128,7 @@ const Deliberation = () => {
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search by name, contact, address, province, or remarks..."
+                placeholder="Search by name, contact, address, province, evaluator, or remarks..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full text-black pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -1410,6 +1446,42 @@ const Deliberation = () => {
             </div>
           </div>
 
+          {/* Evaluator Information (read-only if coming from evaluation) */}
+          {(formData.evaluatedBy || formData.originalId) && (
+            <div className="bg-indigo-50 rounded-xl p-4">
+              <h4 className="font-semibold text-indigo-800 mb-4">Evaluation Information</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Evaluated By</label>
+                  <input
+                    type="text"
+                    value={formData.evaluatedBy || ''}
+                    readOnly
+                    className="w-full px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                  <input
+                    type="text"
+                    value={formData.evaluatedByRole || ''}
+                    readOnly
+                    className="w-full px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Evaluated At</label>
+                  <input
+                    type="text"
+                    value={formData.evaluatedAt ? new Date(formData.evaluatedAt).toLocaleString() : ''}
+                    readOnly
+                    className="w-full px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
             <button
               type="button"
@@ -1562,6 +1634,35 @@ const Deliberation = () => {
                   </p>
                 </div>
               </div>
+
+              {/* Evaluator Information */}
+              {selectedCSO.evaluatedBy && (
+                <div className="md:col-span-2 bg-indigo-50 border border-indigo-200 rounded-xl p-5">
+                  <h3 className="text-lg font-semibold text-indigo-900 mb-4 flex items-center">
+                    <User className="h-5 w-5 mr-2 text-indigo-600" />
+                    Evaluation Information
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <p className="text-sm text-indigo-700">Evaluated By</p>
+                      <p className="font-medium text-indigo-900">{selectedCSO.evaluatedBy}</p>
+                      <p className="text-xs text-indigo-600">{selectedCSO.evaluatedByRole}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-indigo-700">Evaluated At</p>
+                      <p className="font-medium text-indigo-900">
+                        {selectedCSO.evaluatedAt ? new Date(selectedCSO.evaluatedAt).toLocaleString() : ''}
+                      </p>
+                    </div>
+                    {selectedCSO.originalId && (
+                      <div>
+                        <p className="text-sm text-indigo-700">Original Record ID</p>
+                        <p className="font-mono text-xs text-indigo-800 break-all">{selectedCSO.originalId}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {selectedCSO.remarks && (
                 <div className="md:col-span-2 bg-white border border-gray-200 rounded-xl p-5">

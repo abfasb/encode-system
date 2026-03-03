@@ -9,10 +9,7 @@ import AdminPage from './pages/AdminPage'
 import ProtectedRoute from './pages/ProtectedRoute'
 import ExcelExport from './components/admin/ExcelExport'
 import PdsPage from './pages/PdsPage'
-import Pds2Page from './pages/Pds2Page'
-import Pds3Page from './pages/Pds3Page'
-import Pds4Page from './pages/Pds4Page'
-import PdsCombine from './pages/PdsCombine'
+import ChooseCharacter from './components/ChooseCharacter'
   
 function App() {
   const [count, setCount] = useState(0)
@@ -26,10 +23,8 @@ function App() {
         <Route path="/admin/*" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
 
         <Route path="/pds" element={<PdsPage />} />
-        <Route path="/pds2" element={<Pds2Page />} />
-        <Route path="/pds3" element={<Pds3Page />} />
-        <Route path="/pds4" element={<Pds4Page />} />
-        <Route path="/pds-combine" element={<PdsCombine />} />
+        <Route path="/choose-character" element={<ChooseCharacter />} />
+
       </Routes>
     </Router>
   )

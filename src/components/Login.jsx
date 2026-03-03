@@ -31,14 +31,19 @@ export default function Login() {
         form.password
       );
       const user = userCredential.user;
-      const userDoc = await getDoc(doc(db, "users", user.uid));
+       const userDoc = await getDoc(doc(db, "users", "mimaropa.ids"));
       if (userDoc.exists()) {
-        console.log("User data:", userDoc.data());
+        localStorage.setItem(
+          "characters",
+          JSON.stringify(userDoc.data().characters || [])
+        );
       }
-      toast.success("Welcome admin!");
-      setTimeout(function () {
-        navigate("/admin/dashboard");
-      }, 2000);
+
+      toast.success("Login successful!");
+
+      setTimeout(() => {
+        navigate("/choose-character");
+      }, 1500);
     } catch (error) {
       console.error(error);
       setMessage(error.message);

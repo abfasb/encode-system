@@ -32,7 +32,7 @@ import {
   Search
 } from 'lucide-react';
 
-// ========== DataTable Component (same as in CsoOnProcess) ==========
+// ========== DataTable Component ==========
 const DataTable = ({
   columns,
   data,
@@ -213,7 +213,7 @@ const DataTable = ({
   );
 };
 
-// ========== Modal Component (same as in CsoOnProcess) ==========
+// ========== Modal Component ==========
 const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   if (!isOpen) return null;
 
@@ -262,6 +262,19 @@ const Evaluation = () => {
   });
   const [selectedForDeliberation, setSelectedForDeliberation] = useState({}); // { docId: boolean }
 
+  // ========== Get active character from localStorage ==========
+  const getActiveCharacter = () => {
+    try {
+      const stored = localStorage.getItem('activeCharacter');
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (e) {
+      console.error('Error parsing activeCharacter', e);
+    }
+    return null;
+  };
+
   // ========== Fetch Evaluation Data ==========
   const fetchEvaluationData = useCallback(async () => {
     try {
@@ -288,16 +301,31 @@ const Evaluation = () => {
 
   // ========== Move a single record to Deliberation ==========
   const moveToDeliberation = async (record) => {
+    const activeCharacter = getActiveCharacter();
+    if (!activeCharacter) {
+      setError('No active character found. Please select a character first.');
+      return;
+    }
+
     try {
-      // Create a copy in cso-deliberation collection
+      // Create a copy in cso-deliberation collection with evaluator info
       const deliberationData = {
         ...record,
         originalId: record.originalId || record.id,
         movedToDeliberationAt: new Date().toISOString(),
-        for_deliberation: true
+        for_deliberation: true,
+        // Add evaluator information
+        evaluatedBy: activeCharacter.name,
+        evaluatedById: activeCharacter.id,
+        evaluatedByRole: activeCharacter.role,
+        evaluatedAt: new Date().toISOString(),
+        // Set deliberation status to Approved (automatic)
+        deliberation_status: 'Approved'
       };
       delete deliberationData.id;
       delete deliberationData.movedToEvaluationAt; // optional cleanup
+
+      // Add to deliberation collection
       await addDoc(collection(db, 'cso-deliberation'), deliberationData);
 
       // Delete from evaluation
@@ -325,6 +353,12 @@ const Evaluation = () => {
 
   // ========== Bulk move ==========
   const handleBulkMove = async () => {
+    const activeCharacter = getActiveCharacter();
+    if (!activeCharacter) {
+      setError('No active character found. Please select a character first.');
+      return;
+    }
+
     const selectedIds = Object.keys(selectedForDeliberation).filter(id => selectedForDeliberation[id]);
     if (selectedIds.length === 0) {
       setError('Please select at least one record.');
