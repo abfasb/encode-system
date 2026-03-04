@@ -9,7 +9,7 @@ const FileList = () => {
   const [deleteStatus, setDeleteStatus] = useState({});
 
   useEffect(() => {
-    const q = query(collection(db, 'uploads'));
+    const q = query(collection(db, 'csoUploads'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fileData = snapshot.docs.map(doc => ({
         id: doc.id,

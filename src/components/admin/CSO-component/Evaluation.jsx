@@ -213,7 +213,6 @@ const DataTable = ({
   );
 };
 
-// ========== Modal Component ==========
 const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   if (!isOpen) return null;
 
@@ -247,7 +246,6 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   );
 };
 
-// ========== Evaluation Component ==========
 const Evaluation = () => {
   const [evaluationData, setEvaluationData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -260,9 +258,8 @@ const Evaluation = () => {
     rowsPerPage: 10,
     totalPages: 1
   });
-  const [selectedForDeliberation, setSelectedForDeliberation] = useState({}); // { docId: boolean }
+  const [selectedForDeliberation, setSelectedForDeliberation] = useState({}); 
 
-  // ========== Get active character from localStorage ==========
   const getActiveCharacter = () => {
     try {
       const stored = localStorage.getItem('activeCharacter');
@@ -275,7 +272,6 @@ const Evaluation = () => {
     return null;
   };
 
-  // ========== Fetch Evaluation Data ==========
   const fetchEvaluationData = useCallback(async () => {
     try {
       setLoading(true);
