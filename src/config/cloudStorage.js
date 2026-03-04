@@ -12,7 +12,6 @@ const secondFirebaseConfig = {
 
 const secondApp = initializeApp(secondFirebaseConfig, "secondApp");
 
-export const storage = getStorage(secondApp);
 
 const secondStorage = getStorage(secondApp);
 
@@ -27,3 +26,6 @@ export const uploadFileToFirebase = async (file, path) => {
     return null;
   }
 };
+
+export const storage = getStorage(secondApp);
+

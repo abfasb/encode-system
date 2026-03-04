@@ -14,11 +14,9 @@ import {
 } from "firebase/firestore";
 import { firebaseConfig } from "../config/firebase";
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// Xbox‑inspired avatar color themes
 const avatarThemes = [
   { gradient: "from-green-500 to-emerald-400", icon: "🎮" },
   { gradient: "from-blue-500 to-cyan-400", icon: "🎯" },
@@ -32,7 +30,6 @@ const avatarThemes = [
   { gradient: "from-cyan-500 to-blue-400", icon: "⚡" },
 ];
 
-// Role icons (used as fallback or badge)
 const roleIcons = {
   Reviewer: "🕵️",
   Evaluator: "⚖️",
@@ -78,7 +75,6 @@ export default function ChooseCharacter() {
     ensureUserDoc();
   }, []);
 
-  // Real‑time listener for characters
   useEffect(() => {
     const userDocRef = doc(db, "users", "mimaropa.ids");
     const unsub = onSnapshot(
@@ -108,24 +104,20 @@ export default function ChooseCharacter() {
     return () => unsub();
   }, []);
 
-  // Select a character
   const selectCharacter = (char) => {
     setSelectedCharId(char.id);
     localStorage.setItem("activeCharacter", JSON.stringify(char));
-    // Small delay to show selection feedback
     setTimeout(() => {
       navigate("/admin/dashboard");
     }, 300);
   };
 
-  // Add new character
   const addCharacter = async () => {
     if (!newName.trim() || !newRole.trim()) {
       alert("Please enter both name and role");
       return;
     }
 
-    // Prevent duplicates (case‑insensitive)
     if (
       characters.some(
         (c) => c.name.toLowerCase() === newName.trim().toLowerCase()
