@@ -7,9 +7,8 @@ const ExcelExpiredRCEF = () => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Expired FCA');
 
-    // 1. DEFINE ALL 17 COLUMNS (A through Q)
     worksheet.columns = [
-      { key: 'prov', width: 18 },         // A: PROV./CITIES/MUN.
+      { key: 'prov', width: 18 },         
       { key: 'no', width: 6 },            // B: No.
       { key: 'name', width: 45 },         // C: NAME OF FCA
       { key: 'dateApp', width: 15 },      // D: DATE OF APPLICATION RECEIVED
@@ -28,35 +27,60 @@ const ExcelExpiredRCEF = () => {
       { key: 'remarks', width: 15 },      // Q: REMARKS
     ];
 
-    // 2. TABLE HEADERS (ROWS 1 & 2)
+    // 2. TOP TITLE ROWS (Rows 1 to 3)
+    const titleRows = [
+      ['LIST OF FARMERS COOPERATIVE/ASSOCIATION ACCREDITED UNDER RCEF'],
+      ['REGION: MIMAROPA'],
+      [''] // Blank row for spacing
+    ];
+
+    titleRows.forEach((val, index) => {
+      const rowNum = index + 1;
+      worksheet.getRow(rowNum).values = val;
+      // Merge across all 17 columns (A to Q)
+      worksheet.mergeCells(`A${rowNum}:Q${rowNum}`);
+      const cell = worksheet.getCell(`A${rowNum}`);
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.font = { name: 'Times New Roman', size: 11, bold: true };
+      
+      // Make "MIMAROPA" text red
+      if (rowNum === 2) {
+        cell.value = {
+          richText: [
+            { font: { name: 'Times New Roman', bold: true }, text: 'REGION: ' },
+            { font: { name: 'Times New Roman', color: { argb: 'FFFF0000' }, bold: true }, text: 'MIMAROPA' }
+          ]
+        };
+      }
+    });
+
+    // 3. TABLE HEADERS (ROWS 4 & 5)
     const headerColor = 'FFFFFF00'; // Yellow
     
-    // Row 1 Headers
-    worksheet.getRow(1).values = [
+    // Row 4 Headers
+    worksheet.getRow(4).values = [
       'PROV./CITIES/MUN.', 'No.', 'NAME OF FCA', 'DATE OF APPLICATION RECEIVED', 'DATE RECEIVED', 
       'DATE OF EXPIRATION', '*TYPE OF FCA', 'TOTAL NO. OF MEMBERS', 'AREA (ha) COVERED', 'ADDRESS', 
       'CONTACT PERSON', 'CONTACT NO.', 'TYPE OF INTERVENTION', '', '', '', 'REMARKS'
     ];
     
-    // Row 2 Headers (Sub-headers for merged columns)
-    worksheet.getRow(2).values = [
+    // Row 5 Headers (Sub-headers for merged columns)
+    worksheet.getRow(5).values = [
       '', '', '', '', '', '', '', '', '', '', '', '', 
       'SEEDS', 'MECH.', 'CREDIT', 'EXTN.', ''
     ];
 
-    // Merge Header Cells
     const merges = [
-      'A1:A2', 'B1:B2', 'C1:C2', 'D1:D2', 'E1:E2', 'F1:F2', 'G1:G2', // Standard Columns
-      'H1:H2', 'I1:I2', 'J1:J2', 'K1:K2', 'L1:L2', 
-      'M1:P1', // TYPE OF INTERVENTION spans SEEDS, MECH., CREDIT, EXTN.
-      'Q1:Q2'
+      'A4:A5', 'B4:B5', 'C4:C5', 'D4:D5', 'E4:E5', 'F4:F5', 'G4:G5', // Standard Columns
+      'H4:H5', 'I4:I5', 'J4:J5', 'K4:K5', 'L4:L5', 
+      'M4:P4', 
+      'Q4:Q5'
     ];
     merges.forEach(m => worksheet.mergeCells(m));
 
-    // Style Header Rows
-    [1, 2].forEach(rowNum => {
+    [4, 5].forEach(rowNum => {
       const row = worksheet.getRow(rowNum);
-      row.height = 30; // Slightly taller for wrapped text
+      row.height = 30;
       row.eachCell((cell) => {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: headerColor } };
         cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
@@ -68,25 +92,21 @@ const ExcelExpiredRCEF = () => {
       });
     });
 
-    // 3. HELPER FUNCTION FOR PROVINCE ROW
     const addProvinceRow = (name) => {
       const row = worksheet.addRow([name.toUpperCase()]);
       worksheet.mergeCells(`A${row.number}:Q${row.number}`);
       row.eachCell(cell => {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF548235' } }; // Darker green matching screenshot
-        cell.font = { bold: true, italic: true, name: 'Times New Roman', color: { argb: 'FFFFFFFF' } }; // White text usually looks better on dark green, adjust if needed
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF548235' } }; // Dark green
+        cell.font = { bold: true, italic: true, name: 'Times New Roman' }; 
         cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
       });
     };
 
-    // 4. DATA ROWS
     addProvinceRow('PALAWAN');
 
-    // Mapped precisely to the 17 columns based on your screenshot
     const data = [
       ['1. Quezon', 1, 'Panibacan Irrigators Service Association', '9/23/2019', '10/15/2019', '10/14/2022', 'Irrigators Association', 50, 96, 'Brgy. Malagtao', 'Joaquin Martinez', '', 'FALSE', 'TRUE', 'FALSE', 'FALSE', 'Expired'],
       ['', 2, 'Berong Multi-Purpose Cooperative', '10/17/2019', '10/28/2019', '10/27/2022', 'Cooperative', 44, 90, 'Berong', 'Perpetua E. Talaver', '9187534547', 'TRUE', 'FALSE', 'FALSE', 'FALSE', 'Expired']
-      // Add more rows here as needed...
     ];
 
     data.forEach(item => {
@@ -96,19 +116,16 @@ const ExcelExpiredRCEF = () => {
         cell.font = { name: 'Times New Roman', size: 10 };
         cell.alignment = { vertical: 'middle', wrapText: true }; 
         
-        // Bold the Municipality name if it's in column 1
         if (colNumber === 1 && cell.value) {
            cell.font = { name: 'Times New Roman', size: 10, bold: true };
         }
       });
-      // Center align specific columns: No, Dates, Totals, Bools, Remarks
       [2, 4, 5, 6, 8, 9, 12, 13, 14, 15, 16, 17].forEach(col => {
          const cell = row.getCell(col);
          if(cell) cell.alignment = { horizontal: 'center', vertical: 'middle' };
       });
     });
 
-    // 5. GENERATE AND SAVE
     const buffer = await workbook.xlsx.writeBuffer();
     saveAs(new Blob([buffer]), 'Expired_FCA_List.xlsx');
   };

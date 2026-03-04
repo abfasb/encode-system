@@ -10,6 +10,8 @@ import ProtectedRoute from './pages/ProtectedRoute'
 import ExcelExport from './components/admin/ExcelExport'
 import PdsPage from './pages/PdsPage'
 import ChooseCharacter from './components/ChooseCharacter'
+import ExcelExpiredRCEF from './components/ExcelExpiredRCEF'
+import ExcelRCEFWithLackings from './components/ExcelWithLackings'
   
 function App() {
   const [count, setCount] = useState(0)
@@ -19,11 +21,11 @@ function App() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/excel" element={<ExcelExport />} />
+        <Route path="/excel" element={<ExcelRCEFWithLackings />} />
         <Route path="/admin/*" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
 
         <Route path="/pds" element={<PdsPage />} />
-        <Route path="/choose-character" element={<ChooseCharacter />} />
+        <Route path="/choose-character" element={<ChooseCharacter  />} />
 
       </Routes>
     </Router>

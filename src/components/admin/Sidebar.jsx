@@ -5,6 +5,8 @@ import {
   FiBook,
   FiMenu,
   FiCloud,
+  FiUsers,    // Added for the new CSO nav
+  FiFileText  // Added for the RCEF nav
 } from "react-icons/fi";
 import Logo from "../../assets/DA.png";
 import { Navigate } from "react-router-dom";
@@ -15,6 +17,8 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
     { name: "Audit Logs", icon: <FiUser />, key: "audit" },
     { name: "CSOs", icon: <FiBook />, key: "cso" },
     { name: "Upload CSOs", icon: <FiCloud />, key: "upload-cso" },
+    { name: "CSO", icon: <FiUsers />, key: "cso-single" }, 
+    { name: "RCEF Reports", icon: <FiFileText />, key: "rcef-reports" }, 
   ];
 
   return (
