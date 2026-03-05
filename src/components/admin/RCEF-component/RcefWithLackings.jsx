@@ -34,6 +34,14 @@ const formatDate = (dateString) => {
   });
 };
 
+// ---------- Helper: Extract year from date_received ----------
+const extractYear = (dateString) => {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return null;
+  return date.getFullYear();
+};
+
 // ---------- Helper: Normalize province name to title case ----------
 const normalizeProvince = (prov) => {
   if (!prov) return '';
@@ -93,7 +101,7 @@ const RcefWithLackings = () => {
   const [editForm, setEditForm] = useState({});
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filters, setFilters] = useState({ province: 'all' });
+  const [filters, setFilters] = useState({ province: 'all', year: 'all' });
 
   // ---------- Fetch Data from 'rcef-lackings' collection ----------
   const fetchData = async () => {
@@ -156,6 +164,16 @@ const RcefWithLackings = () => {
       return idxA - idxB;
     });
     return sorted;
+  }, [data]);
+
+  // ---------- Year dropdown options (from date_received) ----------
+  const yearOptions = useMemo(() => {
+    const years = new Set();
+    data.forEach(item => {
+      const year = extractYear(item.date_received);
+      if (year) years.add(year);
+    });
+    return Array.from(years).sort((a, b) => b - a); // descending, most recent first
   }, [data]);
 
   // ---------- Edit / Delete Handlers ----------
@@ -226,6 +244,14 @@ const RcefWithLackings = () => {
       filtered = filtered.filter(
         (item) => normalizeProvince(item.province) === selectedNorm
       );
+    }
+
+    if (filters.year !== 'all') {
+      const selectedYear = parseInt(filters.year, 10);
+      filtered = filtered.filter((item) => {
+        const year = extractYear(item.date_received);
+        return year === selectedYear;
+      });
     }
 
     return filtered;
@@ -661,12 +687,24 @@ const RcefWithLackings = () => {
           <div className="flex flex-wrap gap-3">
             <select
               value={filters.province}
-              onChange={(e) => setFilters({ province: e.target.value })}
+              onChange={(e) => setFilters(prev => ({ ...prev, province: e.target.value }))}
               className="px-4 py-3 text-black bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Provinces</option>
               {provinceOptions.map(province => (
                 <option key={province} value={province}>{province}</option>
+              ))}
+            </select>
+
+            {/* Year filter dropdown */}
+            <select
+              value={filters.year}
+              onChange={(e) => setFilters(prev => ({ ...prev, year: e.target.value }))}
+              className="px-4 py-3 text-black bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Years</option>
+              {yearOptions.map(year => (
+                <option key={year} value={year}>{year}</option>
               ))}
             </select>
           </div>

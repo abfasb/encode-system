@@ -144,18 +144,25 @@ const MemoizedTableRow = React.memo(({
         </span>
       </td>
       
-      {/* Add Young Farmer Column */}
+      {/* Young Farmer Column */}
       <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-200">
         <span className="font-semibold">{item.members?.young_farmer || ""}</span>
       </td>
       
-      {/* Add IPs Column */}
+      {/* IPs Column */}
       <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-200">
         <span className="font-semibold">{item.members?.ips || ""}</span>
       </td>
       
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 border-r border-gray-200 min-w-32 truncate" title={item.commodity || ""}>
         {item.commodity || "Not specified"}
+      </td>
+
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 border-r border-gray-200 min-w-32 truncate" title={item.specificIntervention || ""}>
+        {item.specificIntervention || "-"}
+      </td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 border-r border-gray-200 min-w-24">
+        {item.interventionAmount || "-"}
       </td>
       
       <td className="px-4 py-3 whitespace-nowrap text-center border-r border-gray-200">
@@ -361,7 +368,11 @@ export default function Dashboard() {
       ips: "" // Added IPs
     },
     commodity: "",
-    status: { active: "P", inactive: null }
+    status: { active: "P", inactive: null },
+    // New intervention fields
+    interventionReviewed: false,
+    specificIntervention: "",
+    interventionAmount: ""
   });
   
   // Location data states
@@ -420,7 +431,7 @@ export default function Dashboard() {
     return [...new Set(data.map(item => item.commodity).filter(Boolean))].sort();
   }, [data]);
   
-  // Calculate analytics
+  // Calculate analytics (updated to include new fields if needed)
   const analytics = useMemo(() => {
     if (filteredData.length === 0) return null;
     
@@ -471,6 +482,9 @@ export default function Dashboard() {
       0
     );
     
+    // Optional: counts for interventions
+    const interventionsReviewed = filteredData.filter(item => item.interventionReviewed).length;
+    
     return {
       totalAssociations,
       totalMembers,
@@ -481,7 +495,8 @@ export default function Dashboard() {
       emptyRegistrations,
       totalYoungFarmers,
       totalIPs,
-      totalSeniorCitizens
+      totalSeniorCitizens,
+      interventionsReviewed // added
     };
   }, [filteredData]);
 
@@ -602,7 +617,11 @@ const getClientIP = async () => {
                       totalMembers: totalMembers,
                       status: status,
                       registration_type: association.registration_type || "",
-                      createdAt: docData.createdAt?.toDate?.() || new Date()
+                      createdAt: docData.createdAt?.toDate?.() || new Date(),
+                      // New intervention fields (fallback if not exist)
+                      interventionReviewed: association.interventionReviewed || false,
+                      specificIntervention: association.specificIntervention || "",
+                      interventionAmount: association.interventionAmount || ""
                     });
                   });
                 }
@@ -806,7 +825,11 @@ const getClientIP = async () => {
         ips: "" // Added
       },
       commodity: "",
-      status: { active: "P", inactive: null }
+      status: { active: "P", inactive: null },
+      // New intervention fields
+      interventionReviewed: false,
+      specificIntervention: "",
+      interventionAmount: ""
     });
     setIsAddModalOpen(true);
   }, []);
@@ -833,7 +856,11 @@ const getClientIP = async () => {
       commodity: association.commodity || "",
       status: association.status === "Active" 
         ? { active: "P", inactive: null }
-        : { active: null, inactive: "P" }
+        : { active: null, inactive: "P" },
+      // New intervention fields
+      interventionReviewed: association.interventionReviewed || false,
+      specificIntervention: association.specificIntervention || "",
+      interventionAmount: association.interventionAmount || ""
     });
     setIsEditModalOpen(true);
   }, []);
@@ -854,9 +881,9 @@ const getClientIP = async () => {
     });
   }, []);
   
-  // Form input change handler
+  // Form input change handler (updated to handle new fields)
   const handleInputChange = useCallback((e) => {
-    const { name, value } = e.target;
+    const { name, value, type, checked } = e.target;
     if (name.startsWith('members.')) {
       const memberField = name.split('.')[1];
       setNewAssociation(prev => ({
@@ -873,6 +900,11 @@ const getClientIP = async () => {
           ? { active: "P", inactive: null }
           : { active: null, inactive: "P" }
       }));
+    } else if (type === 'checkbox') {
+      setNewAssociation(prev => ({
+        ...prev,
+        [name]: checked
+      }));
     } else {
       setNewAssociation(prev => ({
         ...prev,
@@ -881,7 +913,7 @@ const getClientIP = async () => {
     }
   }, []);
   
-  // Add new association
+  // Add new association (updated to include new fields)
   const handleAddAssociation = async () => {
     try {
       if (!newAssociation.name || !newAssociation.province || !newAssociation.municipality || 
@@ -912,7 +944,11 @@ const getClientIP = async () => {
           ips: newAssociation.members.ips || "" // Added
         },
         commodity: newAssociation.commodity,
-        status: newAssociation.status
+        status: newAssociation.status,
+        // New intervention fields
+        interventionReviewed: newAssociation.interventionReviewed,
+        specificIntervention: newAssociation.specificIntervention,
+        interventionAmount: newAssociation.interventionAmount
       };
       
       const provinceRef = doc(db, "da-encode", provinceDoc.id);
@@ -967,7 +1003,7 @@ const getClientIP = async () => {
     }
   };
   
-  // Update association
+  // Update association (updated to include new fields)
   const handleUpdateAssociation = async () => {
     try {
       if (!selectedAssociation) return;
@@ -1014,7 +1050,11 @@ const getClientIP = async () => {
             ips: newAssociation.members.ips || "" 
           },
           commodity: newAssociation.commodity,
-          status: newAssociation.status
+          status: newAssociation.status,
+          // New intervention fields
+          interventionReviewed: newAssociation.interventionReviewed,
+          specificIntervention: newAssociation.specificIntervention,
+          interventionAmount: newAssociation.interventionAmount
         };
         
         await updateDoc(provinceRef, {
@@ -1168,6 +1208,14 @@ const getClientIP = async () => {
               return "";
             };
             
+            // Helper to get boolean from string "Yes"/"No"
+            const getBoolean = (keys, defaultValue = false) => {
+              const val = getValue(keys).toLowerCase();
+              if (val === 'yes' || val === 'true' || val === '1') return true;
+              if (val === 'no' || val === 'false' || val === '0') return false;
+              return defaultValue;
+            };
+            
             transformedData.push({
               name: getValue(["Name of Association", "Association Name", "Name", "ASSOCIATION NAME", "ASSOCIATION"]),
               address: getValue(["Address", "Complete Address", "ADDRESS", "LOCATION"]),
@@ -1186,7 +1234,10 @@ const getClientIP = async () => {
               status: {
                 active: getValue(["Active", "Status"])?.toLowerCase() === "active" ? "P" : null,
                 inactive: getValue(["Inactive", "Status"])?.toLowerCase() === "inactive" ? "P" : null
-              }
+              },
+              // New intervention fields
+              specificIntervention: getValue(["Specific Intervention", "SPECIFIC INTERVENTION", "Intervention"]),
+              interventionAmount: getValue(["Amount", "AMOUNT", "Intervention Amount"])
             });
           });
           
@@ -1253,7 +1304,7 @@ const getClientIP = async () => {
     setIsImportModalOpen(true);
   };
   
-  // Process import to Firebase
+  // Process import to Firebase (updated to include new fields)
   const processImportToFirebase = async () => {
     try {
       setImportStatus({
@@ -1396,7 +1447,10 @@ const getClientIP = async () => {
         "Young Farmer": "10", // Added
         "IPs": "5", // Added
         "Commodity": "Rice, Vegetables",
-        "Status": "Active"
+        "Status": "Active",
+        // New intervention columns
+        "Specific Intervention": "Seeds Distribution",
+        "Amount": "100 bags"
       },
       {
         "Name of Association": "Another Farmers Group",
@@ -1411,7 +1465,9 @@ const getClientIP = async () => {
         "Young Farmer": "8", // Added
         "IPs": "3", // Added
         "Commodity": "Corn, Livestock",
-        "Status": "Active"
+        "Status": "Active",
+        "Specific Intervention": "",
+        "Amount": ""
       }
     ];
     
@@ -1495,14 +1551,14 @@ const exportToExcel = () => {
     <body>
      <table style="width:100%; border-collapse: collapse; margin-bottom: 10px;">
     <tr>
-      <td colspan="12" style="text-align:center; font-weight:bold; font-size:18px;">
+      <td colspan="16" style="text-align:center; font-weight:bold; font-size:18px;">
         LIST OF REGISTERED ASSOCIATIONS
       </td>
     </tr>
     
     <!-- Empty row for spacing -->
     <tr style="height:15px;">
-      <td colspan="12"></td>
+      <td colspan="16"></td>
       <td colspan="3" style="font-weight:bold;">
         LEGEND:
       </td>
@@ -1510,13 +1566,13 @@ const exportToExcel = () => {
     
     <tr>
       <td colspan="2"><strong>PROVINCE</strong></td>
-      <td colspan="10">: ${displayProvince}</td>
+      <td colspan="14">: ${displayProvince}</td>
       <td colspan="3" class="no-data" style="text-align:center;">NO DATA</td>
     </tr>
     
     <tr>
       <td colspan="2"><strong>MUNICIPALITY</strong></td>
-      <td colspan="10">: ${displayMunicipality}</td>
+      <td colspan="14">: ${displayMunicipality}</td>
       <td colspan="3" class="no-registration" style="text-align:center;">NO REGISTRATION</td>
     </tr>
   </table>
@@ -1533,6 +1589,8 @@ const exportToExcel = () => {
           <th rowspan="2" style="width: 100px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Contact No.</th>
           <th colspan="6" style="color: black; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">No. of Members</th>
           <th rowspan="2" style="width: 120px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Commodity</th>
+          <!-- New Intervention Columns: parent header spans 3 columns -->
+          <th colspan="3" style="color: black; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Intervention Reviewed</th>
           <th colspan="2" style="color: black; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Status</th>
         </tr>
         <tr>
@@ -1542,6 +1600,10 @@ const exportToExcel = () => {
           <th style="color: white; color:black; width: 80px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Differently-abled Person</th>
           <th style="color: white; color:black; width: 80px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Young Farmer</th>
           <th style="color: white; color:black; width: 80px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">IPs</th>
+          <!-- Under "Intervention Reviewed": first subheader empty, then two visible headers -->
+          <th style="color: white; color:black; width: 80px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;"></th>
+          <th style="color: white; color:black; width: 150px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Specific Intervention</th>
+          <th style="color: white; color:black; width: 100px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Amount</th>
           <th style="color: white; color:black; width: 80px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Active</th>
           <th style="color: white; color:black; width: 80px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Inactive</th>
         </tr>
@@ -1580,6 +1642,9 @@ const exportToExcel = () => {
           <td style="text-align: center">${displayMemberValue(item.members?.young_farmer)}</td>
           <td style="text-align: center">${displayMemberValue(item.members?.ips)}</td>
           <td>${item.commodity || ""}</td>
+          <!-- Intervention data: first column (boolean) under parent, then two detail columns -->
+          <td>${item.specificIntervention || "-"}</td>
+          <td>${item.interventionAmount || "-"}</td>
           <td style="text-align: center">${item.status === "Active" ? "✓" : ""}</td>
           <td style="text-align: center">${item.status === "Inactive" ? "✓" : ""}</td>
         </tr>
@@ -1610,7 +1675,7 @@ const exportToExcel = () => {
   window.URL.revokeObjectURL(url);
 };
   
-  // Print table
+  // Print table (updated to include new columns)
   const printTable = () => {
     if (filteredData.length > 500) {
       if (!window.confirm(`Printing ${filteredData.length} rows. This may take a moment. Continue?`)) {
@@ -1654,6 +1719,9 @@ const exportToExcel = () => {
                 <th>Young Farmer</th>
                 <th>IPs</th>
                 <th>Commodity</th>
+                <th>Intervention Reviewed</th>
+                <th>Specific Intervention</th>
+                <th>Amount</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -1673,6 +1741,9 @@ const exportToExcel = () => {
                   <td>${item.members?.young_farmer || ""}</td>
                   <td>${item.members?.ips || ""}</td>
                   <td>${item.commodity || ""}</td>
+                  <td>${item.interventionReviewed ? "Yes" : "No"}</td>
+                  <td>${item.specificIntervention || "-"}</td>
+                  <td>${item.interventionAmount || "-"}</td>
                   <td>${item.status || ""}</td>
                 </tr>
               `).join('')}
@@ -2042,7 +2113,7 @@ const exportToExcel = () => {
           <table 
             ref={tableRef}
             className="min-w-full divide-y divide-gray-200 text-sm"
-            style={{ minWidth: '1900px' }}
+            style={{ minWidth: '2200px' }}  // Increased to accommodate new columns
           >
             <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
               <tr>
@@ -2069,6 +2140,10 @@ const exportToExcel = () => {
                 </th>
                 <th rowSpan="2" className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 min-w-32">
                   Commodity
+                </th>
+                {/* New Intervention Columns: parent header spans 3 columns */}
+                <th colSpan="2" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                  Intervention Reviewed
                 </th>
                 <th colSpan="2" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
                   Status
@@ -2132,6 +2207,14 @@ const exportToExcel = () => {
                     <span className="ml-1">{getSortIcon('members.ips')}</span>
                   </div>
                 </th>
+                {/* Under "Intervention Reviewed": first subheader empty, then two visible headers */}
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-24"></th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-32">
+                  Specific Intervention
+                </th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-24">
+                  Amount
+                </th>
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-24">
                   Active
                 </th>
@@ -2143,7 +2226,7 @@ const exportToExcel = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan="19" className="px-6 py-12 text-center">
+                  <td colSpan="22" className="px-6 py-12 text-center">
                     <div className="text-gray-500 py-8">
                       <FiSearch className="h-16 w-16 mx-auto mb-4 text-gray-300" />
                       <p className="text-lg font-medium text-gray-700">No associations found</p>
@@ -2807,6 +2890,50 @@ const exportToExcel = () => {
                   </div>
                 </div>
               </div>
+
+              {/* New Intervention Information Section */}
+              <div className="mb-8">
+                <h4 className="text-lg font-bold text-gray-800 mb-6 pb-3 border-b border-gray-200">Intervention Information</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Intervention Reviewed</label>
+                    <div className="flex items-center h-12">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          name="interventionReviewed"
+                          checked={newAssociation.interventionReviewed}
+                          onChange={handleInputChange}
+                          className="h-5 w-5 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                        />
+                        <span className="ml-2 text-gray-700">Yes</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Specific Intervention</label>
+                    <input
+                      type="text"
+                      name="specificIntervention"
+                      value={newAssociation.specificIntervention}
+                      onChange={handleInputChange}
+                      className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200"
+                      placeholder="e.g., Seeds, Mech, Credit, Extn"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Amount</label>
+                    <input
+                      type="text"
+                      name="interventionAmount"
+                      value={newAssociation.interventionAmount}
+                      onChange={handleInputChange}
+                      className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200"
+                      placeholder="e.g., 100 bags, ₱50,000"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
             
             <div className="px-8 py-6 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white flex justify-end space-x-4">
@@ -3052,6 +3179,50 @@ const exportToExcel = () => {
                       onChange={handleInputChange}
                       className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200"
                       min="0"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* New Intervention Information Section in Edit Modal */}
+              <div className="mb-8">
+                <h4 className="text-lg font-bold text-gray-800 mb-6 pb-3 border-b border-gray-200">Intervention Information</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Intervention Reviewed</label>
+                    <div className="flex items-center h-12">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          name="interventionReviewed"
+                          checked={newAssociation.interventionReviewed}
+                          onChange={handleInputChange}
+                          className="h-5 w-5 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                        />
+                        <span className="ml-2 text-gray-700">Yes</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Specific Intervention</label>
+                    <input
+                      type="text"
+                      name="specificIntervention"
+                      value={newAssociation.specificIntervention}
+                      onChange={handleInputChange}
+                      className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200"
+                      placeholder="e.g., Seeds, Mech, Credit, Extn"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Amount</label>
+                    <input
+                      type="text"
+                      name="interventionAmount"
+                      value={newAssociation.interventionAmount}
+                      onChange={handleInputChange}
+                      className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200"
+                      placeholder="e.g., 100 bags, ₱50,000"
                     />
                   </div>
                 </div>

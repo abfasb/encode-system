@@ -34,6 +34,14 @@ const formatDate = (dateString) => {
   });
 };
 
+// ---------- Helper: Extract year from date string ----------
+const getYearFromDate = (dateString) => {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return null;
+  return date.getFullYear();
+};
+
 // ---------- Helper: Normalize province name to title case ----------
 const normalizeProvince = (prov) => {
   if (!prov) return '';
@@ -93,7 +101,11 @@ const RcefAccredited = () => {
   const [editForm, setEditForm] = useState({});
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filters, setFilters] = useState({ province: 'all' });
+  const [filters, setFilters] = useState({
+    province: 'all',
+    accreditedYear: 'all',
+    expirationYear: 'all'
+  });
 
   // ---------- Fetch Data from 'rcef' collection ----------
   const fetchData = async () => {
@@ -160,6 +172,23 @@ const RcefAccredited = () => {
       return idxA - idxB;
     });
     return sorted;
+  }, [data]);
+
+  // ---------- Year options for filtering ----------
+  const accreditedYearOptions = useMemo(() => {
+    const years = data
+      .map(item => getYearFromDate(item.date_accredited))
+      .filter(year => year !== null)
+      .sort((a, b) => b - a); // descending
+    return [...new Set(years)];
+  }, [data]);
+
+  const expirationYearOptions = useMemo(() => {
+    const years = data
+      .map(item => getYearFromDate(item.date_expiration))
+      .filter(year => year !== null)
+      .sort((a, b) => b - a);
+    return [...new Set(years)];
   }, [data]);
 
   // ---------- Edit / Delete Handlers ----------
@@ -230,6 +259,20 @@ const RcefAccredited = () => {
       filtered = filtered.filter(
         (item) => normalizeProvince(item.province) === selectedNorm
       );
+    }
+
+    if (filters.accreditedYear !== 'all') {
+      filtered = filtered.filter(item => {
+        const year = getYearFromDate(item.date_accredited);
+        return year === parseInt(filters.accreditedYear, 10);
+      });
+    }
+
+    if (filters.expirationYear !== 'all') {
+      filtered = filtered.filter(item => {
+        const year = getYearFromDate(item.date_expiration);
+        return year === parseInt(filters.expirationYear, 10);
+      });
     }
 
     return filtered;
@@ -694,12 +737,34 @@ const RcefAccredited = () => {
           <div className="flex flex-wrap gap-3">
             <select
               value={filters.province}
-              onChange={(e) => setFilters({ province: e.target.value })}
+              onChange={(e) => setFilters(prev => ({ ...prev, province: e.target.value }))}
               className="px-4 py-3 text-black bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Provinces</option>
               {provinceOptions.map(province => (
                 <option key={province} value={province}>{province}</option>
+              ))}
+            </select>
+
+            <select
+              value={filters.accreditedYear}
+              onChange={(e) => setFilters(prev => ({ ...prev, accreditedYear: e.target.value }))}
+              className="px-4 py-3 text-black bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Accredited Years</option>
+              {accreditedYearOptions.map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+
+            <select
+              value={filters.expirationYear}
+              onChange={(e) => setFilters(prev => ({ ...prev, expirationYear: e.target.value }))}
+              className="px-4 py-3 text-black bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Expiration Years</option>
+              {expirationYearOptions.map(year => (
+                <option key={year} value={year}>{year}</option>
               ))}
             </select>
           </div>
