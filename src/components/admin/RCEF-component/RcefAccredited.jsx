@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import DataTable from 'react-data-table-component';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { getFirestore, collection, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
 import {
   Eye,
   Edit,
@@ -18,7 +18,8 @@ import {
   Building,
   User,
   FileText,
-  Clock
+  Clock,
+  Plus
 } from 'lucide-react';
 import { db } from '../../../config/firebase';
 
@@ -94,11 +95,38 @@ const RcefAccredited = () => {
   const [success, setSuccess] = useState('');
 
   // ---------- CRUD States ----------
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [createForm, setCreateForm] = useState({
+    province: '',
+    municipality: '',
+    no: '',
+    name: '',
+    date_accredited: '',
+    date_expiration: '',
+    date_application_received: '',
+    type_fca: '',
+    male_members: '',
+    female_members: '',
+    total_members: '',
+    area_covered: '',
+    address: '',
+    contact_person: '',
+    contact_no: '',
+    remarks: '',
+    certificate_of_accreditation: '',
+    submitted_documents: '',
+    interventions: {
+      seeds: false,
+      mech: false,
+      credit: false,
+      extn: false
+    }
+  });
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({
@@ -191,7 +219,7 @@ const RcefAccredited = () => {
     return [...new Set(years)];
   }, [data]);
 
-  // ---------- Edit / Delete Handlers ----------
+  // ---------- Edit / Delete / Create Handlers ----------
   const handleEdit = (row) => {
     setSelectedApplication(row);
     setEditForm(row);
@@ -225,6 +253,47 @@ const RcefAccredited = () => {
     } catch (error) {
       console.error('Update error: ', error);
       setError('Failed to update record. Please try again.');
+    }
+  };
+
+  const handleCreate = async () => {
+    try {
+      // Basic validation: require at least name
+      if (!createForm.name) {
+        setError('Association name is required.');
+        return;
+      }
+
+      const docRef = await addDoc(collection(db, 'rcef'), createForm);
+      const newRecord = { id: docRef.id, ...createForm };
+      setData([...data, newRecord]);
+      setSuccess(`Application "${createForm.name}" created successfully.`);
+      setShowCreateModal(false);
+      setCreateForm({
+        province: '',
+        municipality: '',
+        no: '',
+        name: '',
+        date_accredited: '',
+        date_expiration: '',
+        date_application_received: '',
+        type_fca: '',
+        male_members: '',
+        female_members: '',
+        total_members: '',
+        area_covered: '',
+        address: '',
+        contact_person: '',
+        contact_no: '',
+        remarks: '',
+        certificate_of_accreditation: '',
+        submitted_documents: '',
+        interventions: { seeds: false, mech: false, credit: false, extn: false }
+      });
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error) {
+      console.error('Create error: ', error);
+      setError('Failed to create record. Please try again.');
     }
   };
 
@@ -597,6 +666,22 @@ const RcefAccredited = () => {
     }
   };
 
+  const handleCreateChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    if (name.startsWith('interventions.')) {
+      const intervention = name.split('.')[1];
+      setCreateForm(prev => ({
+        ...prev,
+        interventions: {
+          ...(prev.interventions || {}),
+          [intervention]: checked
+        }
+      }));
+    } else {
+      setCreateForm(prev => ({ ...prev, [name]: value }));
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       {/* Header */}
@@ -610,6 +695,14 @@ const RcefAccredited = () => {
           </div>
 
           <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="inline-flex items-center px-4 py-2.5 bg-blue-600 text-white font-semibold rounded-xl shadow-lg hover:bg-blue-700 transition-colors"
+            >
+              <Plus className="h-5 w-5 mr-2" />
+              Create New
+            </button>
+
             <button
               onClick={exportToExcel}
               className="inline-flex items-center px-4 py-2.5 bg-green-600 text-white font-semibold rounded-xl shadow-lg hover:bg-green-700 transition-colors"
@@ -849,6 +942,249 @@ const RcefAccredited = () => {
         </div>
       </div>
 
+      {/* ---------- CREATE MODAL ---------- */}
+      <Modal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="Create New Accredited Application"
+        size="lg"
+      >
+        <form onSubmit={(e) => { e.preventDefault(); handleCreate(); }} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Province</label>
+              <input
+                type="text"
+                name="province"
+                value={createForm.province}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Municipality</label>
+              <input
+                type="text"
+                name="municipality"
+                value={createForm.municipality}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">No.</label>
+              <input
+                type="text"
+                name="no"
+                value={createForm.no}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Name of Association *</label>
+              <input
+                type="text"
+                name="name"
+                value={createForm.name}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date Accredited</label>
+              <input
+                type="text"
+                name="date_accredited"
+                value={createForm.date_accredited}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date Expiration</label>
+              <input
+                type="text"
+                name="date_expiration"
+                value={createForm.date_expiration}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date Application Received</label>
+              <input
+                type="text"
+                name="date_application_received"
+                value={createForm.date_application_received}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Type of FCA</label>
+              <input
+                type="text"
+                name="type_fca"
+                value={createForm.type_fca}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Male Members</label>
+              <input
+                type="number"
+                name="male_members"
+                value={createForm.male_members}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Female Members</label>
+              <input
+                type="number"
+                name="female_members"
+                value={createForm.female_members}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Total Members</label>
+              <input
+                type="number"
+                name="total_members"
+                value={createForm.total_members}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Area Covered (ha)</label>
+              <input
+                type="text"
+                name="area_covered"
+                value={createForm.area_covered}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+              <input
+                type="text"
+                name="address"
+                value={createForm.address}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
+              <input
+                type="text"
+                name="contact_person"
+                value={createForm.contact_person}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Contact No.</label>
+              <input
+                type="text"
+                name="contact_no"
+                value={createForm.contact_no}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Remarks</label>
+              <input
+                type="text"
+                name="remarks"
+                value={createForm.remarks}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Certificate</label>
+              <input
+                type="text"
+                name="certificate_of_accreditation"
+                value={createForm.certificate_of_accreditation}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Submitted Documents</label>
+              <input
+                type="text"
+                name="submitted_documents"
+                value={createForm.submitted_documents}
+                onChange={handleCreateChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-800 mb-4 text-lg flex items-center">
+              <Building className="h-5 w-5 mr-2 text-green-600" />
+              Interventions
+            </h4>
+            <div className="grid grid-cols-2 gap-4">
+              <CheckboxField
+                name="interventions.seeds"
+                label="Seeds"
+                checked={createForm.interventions.seeds}
+                onChange={handleCreateChange}
+              />
+              <CheckboxField
+                name="interventions.mech"
+                label="Mechanization"
+                checked={createForm.interventions.mech}
+                onChange={handleCreateChange}
+              />
+              <CheckboxField
+                name="interventions.credit"
+                label="Credit"
+                checked={createForm.interventions.credit}
+                onChange={handleCreateChange}
+              />
+              <CheckboxField
+                name="interventions.extn"
+                label="Extension"
+                checked={createForm.interventions.extn}
+                onChange={handleCreateChange}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(false)}
+              className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-6 py-2.5 bg-green-600 text-white font-medium rounded-lg shadow-lg hover:bg-green-700 transition-colors"
+            >
+              Create Application
+            </button>
+          </div>
+        </form>
+      </Modal>
+
       {/* ---------- EDIT MODAL ---------- */}
       <Modal
         isOpen={showEditModal}
@@ -914,6 +1250,16 @@ const RcefAccredited = () => {
                 type="text"
                 name="date_expiration"
                 value={editForm.date_expiration || ''}
+                onChange={handleEditChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date Application Received</label>
+              <input
+                type="text"
+                name="date_application_received"
+                value={editForm.date_application_received || ''}
                 onChange={handleEditChange}
                 className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />

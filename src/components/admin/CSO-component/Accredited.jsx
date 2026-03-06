@@ -425,11 +425,7 @@ const initialFormState = {
   certificate_of_accreditation: '',
   province: '',
   region: 'MIMAROPA',
-  status: 'Active',
-  // New intervention fields
-  interventionReviewed: false,
-  specificIntervention: '',
-  interventionAmount: ''
+  status: 'Active'
 };
 
 const Accredited = () => {
@@ -681,7 +677,7 @@ const Accredited = () => {
     setShowDeleteModal(true);
   };
 
-  // ---------- Export to Excel with new intervention columns ----------
+  // ---------- Export to Excel (unchanged) ----------
   const exportToExcelWithBeautifulFormatting = async () => {
     try {
       const mimaropaProvinces = [
@@ -791,35 +787,31 @@ const Accredited = () => {
       wsData.push([`as of ${currentMonth} ${currentYear}`]);
       wsData.push([]);
 
-      // Title merges (now covering up to column 18)
-      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 18 } });
-      merges.push({ s: { r: 1, c: 0 }, e: { r: 1, c: 18 } });
+      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 15 } });
+      merges.push({ s: { r: 1, c: 0 }, e: { r: 1, c: 15 } });
 
       wsData.push([
         'NO.', 'NAME OF THE ASSOCIATION', 'CONTACT PERSON', 'POSITION',
         'SEX', '',
         'CONTACT NUMBER', 'EMAIL ADDRESS', 'NO. OF MEMBERS', 'ADDRESS',
         'SCOPE', 'NATURE OF SERVICES', 'ACCREDITATION NO.',
-        'DATE OF ISSUANCE', 'DATE OF EXPIRATION', 'CERTIFICATE OF ACCREDITATION',
-        'INTERVENTION REVIEWED', 'SPECIFIC INTERVENTION', 'AMOUNT'
+        'DATE OF ISSUANCE', 'DATE OF EXPIRATION', 'CERTIFICATE OF ACCREDITATION'
       ]);
 
-      wsData.push(['', '', '', '', 'F', 'M', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+      wsData.push(['', '', '', '', 'F', 'M', '', '', '', '', '', '', '', '', '', '']);
 
-      // Merges for headers (row 3 to row 4)
       merges.push({ s: { r: 3, c: 4 }, e: { r: 3, c: 5 } });
-      // Merge each other column individually
-      [0, 1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].forEach(col => {
+      [0, 1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].forEach(col => {
         merges.push({ s: { r: 3, c: col }, e: { r: 4, c: col } });
       });
 
       let currentRow = 5;
 
       sortedProvinces.forEach(province => {
-        const pRow = Array(19).fill('');
+        const pRow = Array(16).fill('');
         pRow[0] = province.toUpperCase();
         wsData.push(pRow);
-        merges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: 18 } });
+        merges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: 15 } });
         currentRow++;
 
         groupedData[province].forEach(item => {
@@ -839,14 +831,11 @@ const Accredited = () => {
             item.accreditation_no || '',
             item.date_of_issuance || '',
             item.date_of_expiration || '',
-            item.certificate_of_accreditation || '',
-            item.interventionReviewed ? 'Yes' : 'No',
-            item.specificIntervention || '',
-            item.interventionAmount || ''
+            item.certificate_of_accreditation || ''
           ]);
           currentRow++;
         });
-        wsData.push(Array(19).fill(''));
+        wsData.push(Array(16).fill(''));
         currentRow++;
       });
 
@@ -857,8 +846,7 @@ const Accredited = () => {
         { wch: 6 }, { wch: 6 },
         { wch: 18 }, { wch: 30 }, { wch: 15 }, { wch: 45 },
         { wch: 15 }, { wch: 35 }, { wch: 20 }, { wch: 18 },
-        { wch: 18 }, { wch: 45 },
-        { wch: 18 }, { wch: 25 }, { wch: 15 }
+        { wch: 18 }, { wch: 45 }
       ];
 
       ws['!rows'] = wsData.map((row, i) => {
@@ -887,7 +875,7 @@ const Accredited = () => {
                 cell.l = { Target: cell.v, Tooltip: "Click to view Certificate" };
                 cell.s = linkStyle;
               } else {
-                cell.s = ([0, 4, 5, 8, 16].includes(C)) ? centerStyle : dataStyle;
+                cell.s = ([0, 4, 5, 8].includes(C)) ? centerStyle : dataStyle;
               }
             }
           }
@@ -971,10 +959,7 @@ const Accredited = () => {
               date_of_issuance: item['DATE OF ISSUANCE OF ACCREDITATION'] || item['DATE OF ISSUANCE'] || '',
               date_of_expiration: item['DATE OF EXPIRATION'] || '',
               status: 'Active',
-              certificate_of_accreditation: item['CERTIFICATE OF ACCREDITATION'] || '',
-              interventionReviewed: item['INTERVENTION REVIEWED'] === 'Yes',
-              specificIntervention: item['SPECIFIC INTERVENTION'] || '',
-              interventionAmount: item['AMOUNT'] || ''
+              certificate_of_accreditation: item['CERTIFICATE OF ACCREDITATION'] || ''
             };
 
             const existingQuery = query(collection(db, 'cso'), where('no', '==', csoRecord.no));
@@ -1112,7 +1097,7 @@ const Accredited = () => {
     }));
   }, [filteredData.length, pagination.rowsPerPage]);
 
-  // ---------- Table Columns (including new intervention columns) ----------
+  // ---------- Table Columns ----------
   const columns = [
     {
       key: 'no',
@@ -1202,33 +1187,6 @@ const Accredited = () => {
           )}
         </div>
       )
-    },
-    // New intervention columns
-    {
-      key: 'interventionReviewed',
-      header: 'Interv. Reviewed',
-      sortable: true,
-      render: (row) => (
-        <div className="flex justify-center">
-          {row.interventionReviewed ? (
-            <Check className="h-5 w-5 text-green-600" />
-          ) : (
-            <X className="h-5 w-5 text-red-600" />
-          )}
-        </div>
-      )
-    },
-    {
-      key: 'specificIntervention',
-      header: 'Specific Intervention',
-      sortable: true,
-      render: (row) => row.specificIntervention || '-'
-    },
-    {
-      key: 'interventionAmount',
-      header: 'Amount',
-      sortable: true,
-      render: (row) => row.interventionAmount || '-'
     },
     {
       key: 'actions',
@@ -1804,48 +1762,6 @@ const Accredited = () => {
             </div>
           </div>
 
-          {/* New Intervention Information Section */}
-          <div className="bg-indigo-50 rounded-xl p-4">
-            <h4 className="font-semibold text-indigo-800 mb-4">Intervention Information</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Intervention Reviewed</label>
-                <div className="flex items-center h-10">
-                  <input
-                    type="checkbox"
-                    name="interventionReviewed"
-                    checked={formData.interventionReviewed}
-                    onChange={handleInputChange}
-                    className="h-5 w-5 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                  />
-                  <span className="ml-2 text-gray-700">Yes</span>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Specific Intervention</label>
-                <input
-                  type="text"
-                  name="specificIntervention"
-                  value={formData.specificIntervention}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder="e.g., Seeds, Mech, Credit, Extn"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
-                <input
-                  type="text"
-                  name="interventionAmount"
-                  value={formData.interventionAmount}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder="e.g., 100 bags, ₱50,000"
-                />
-              </div>
-            </div>
-          </div>
-
           <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
             <button
               type="button"
@@ -2007,30 +1923,6 @@ const Accredited = () => {
                   <p className="text-gray-700 whitespace-pre-line">
                     {selectedCSO.nature_of_services || 'No services specified'}
                   </p>
-                </div>
-              </div>
-
-              {/* New Intervention Details in View Modal */}
-              <div className="md:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <Check className="h-5 w-5 mr-2 text-indigo-600" />
-                  Intervention Information
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-500">Intervention Reviewed</p>
-                    <p className="font-medium text-black">
-                      {selectedCSO.interventionReviewed ? 'Yes' : 'No'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Specific Intervention</p>
-                    <p className="font-medium text-black">{selectedCSO.specificIntervention || '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Amount</p>
-                    <p className="font-medium text-black">{selectedCSO.interventionAmount || '-'}</p>
-                  </div>
                 </div>
               </div>
             </div>

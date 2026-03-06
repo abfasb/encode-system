@@ -35,6 +35,14 @@ const formatDate = (dateString) => {
   });
 };
 
+// ---------- Helper: Extract year from date string ----------
+const getYearFromDate = (dateString) => {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return null;
+  return date.getFullYear();
+};
+
 // ---------- Helper: Normalize province name to title case ----------
 const normalizeProvince = (prov) => {
   if (!prov) return '';
@@ -100,14 +108,12 @@ const RcefExpired = () => {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({ province: 'all' });
-  // New date filter state
-  const [dateFilters, setDateFilters] = useState({
-    accreditedStart: '',
-    accreditedEnd: '',
-    expirationStart: '',
-    expirationEnd: '',
-    receivedStart: '',
-    receivedEnd: '',
+
+  // Year filter state (instead of date ranges)
+  const [yearFilters, setYearFilters] = useState({
+    accreditedYear: '',
+    expirationYear: '',
+    receivedYear: '',
   });
 
   // ---------- Fetch Data from 'rcef-expired' collection ----------
@@ -171,6 +177,24 @@ const RcefExpired = () => {
       return idxA - idxB;
     });
     return sorted;
+  }, [data]);
+
+  // ---------- Available years for dropdowns (optional) ----------
+  const availableYears = useMemo(() => {
+    const years = new Set();
+    data.forEach(item => {
+      const year = getYearFromDate(item.date_accredited);
+      if (year) years.add(year);
+    });
+    data.forEach(item => {
+      const year = getYearFromDate(item.date_expiration);
+      if (year) years.add(year);
+    });
+    data.forEach(item => {
+      const year = getYearFromDate(item.date_application_received);
+      if (year) years.add(year);
+    });
+    return Array.from(years).sort((a, b) => b - a); // descending, most recent first
   }, [data]);
 
   // ---------- Edit / Delete / Reactivate Handlers ----------
@@ -262,19 +286,16 @@ const RcefExpired = () => {
     }
   };
 
-  // Helper to clear all date filters
-  const clearDateFilters = () => {
-    setDateFilters({
-      accreditedStart: '',
-      accreditedEnd: '',
-      expirationStart: '',
-      expirationEnd: '',
-      receivedStart: '',
-      receivedEnd: '',
+  // Helper to clear all year filters
+  const clearYearFilters = () => {
+    setYearFilters({
+      accreditedYear: '',
+      expirationYear: '',
+      receivedYear: '',
     });
   };
 
-  // ---------- Filtered Data with Date Filters ----------
+  // ---------- Filtered Data with Year Filters ----------
   const filteredData = useMemo(() => {
     let filtered = [...data];
 
@@ -297,47 +318,30 @@ const RcefExpired = () => {
       );
     }
 
-    // Date filter logic
-    const parseDate = (dateStr) => {
-      if (!dateStr) return null;
-      const d = new Date(dateStr);
-      return isNaN(d.getTime()) ? null : d;
-    };
-
-    const isDateInRange = (dateStr, startStr, endStr) => {
-      const date = parseDate(dateStr);
-      if (!date) return false; // exclude records with missing/invalid dates when filter is active
-      const start = startStr ? parseDate(startStr) : null;
-      const end = endStr ? parseDate(endStr) : null;
-      if (start && date < start) return false;
-      if (end && date > end) return false;
-      return true;
-    };
-
-    const {
-      accreditedStart, accreditedEnd,
-      expirationStart, expirationEnd,
-      receivedStart, receivedEnd
-    } = dateFilters;
+    // Year filter logic
+    const { accreditedYear, expirationYear, receivedYear } = yearFilters;
 
     filtered = filtered.filter(item => {
-      // Accredited date filter
-      if (accreditedStart || accreditedEnd) {
-        if (!isDateInRange(item.date_accredited, accreditedStart, accreditedEnd)) return false;
+      // Accredited year filter
+      if (accreditedYear) {
+        const year = getYearFromDate(item.date_accredited);
+        if (year !== parseInt(accreditedYear)) return false;
       }
-      // Expiration date filter
-      if (expirationStart || expirationEnd) {
-        if (!isDateInRange(item.date_expiration, expirationStart, expirationEnd)) return false;
+      // Expiration year filter
+      if (expirationYear) {
+        const year = getYearFromDate(item.date_expiration);
+        if (year !== parseInt(expirationYear)) return false;
       }
-      // Application received date filter
-      if (receivedStart || receivedEnd) {
-        if (!isDateInRange(item.date_application_received, receivedStart, receivedEnd)) return false;
+      // Application received year filter
+      if (receivedYear) {
+        const year = getYearFromDate(item.date_application_received);
+        if (year !== parseInt(receivedYear)) return false;
       }
       return true;
     });
 
     return filtered;
-  }, [data, searchTerm, filters, dateFilters]);
+  }, [data, searchTerm, filters, yearFilters]);
 
   // ---------- Table Columns ----------
   const columns = [
@@ -819,78 +823,47 @@ const RcefExpired = () => {
           </div>
         </div>
 
-        {/* Date Filters Section */}
+        {/* Year Filters Section */}
         <div className="mt-4 border-t border-gray-200 pt-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-gray-700">Filter by Dates</h3>
+            <h3 className="text-sm font-semibold text-gray-700">Filter by Year</h3>
             <button
-              onClick={clearDateFilters}
+              onClick={clearYearFilters}
               className="text-xs text-blue-600 hover:text-blue-800 flex items-center"
             >
               <X className="h-3 w-3 mr-1" />
-              Clear Dates
+              Clear Years
             </button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Accredited Date */}
+          <div className="grid grid-cols-1 md:grid-cols-2 items-center content-center gap-4">
+            {/* Accredited Year */}
+           
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Accredited Date</label>
-              <div className="flex gap-2">
-                <input
-                  type="date"
-                  value={dateFilters.accreditedStart}
-                  onChange={(e) => setDateFilters({ ...dateFilters, accreditedStart: e.target.value })}
-                  className="w-full px-3 py-2 text-sm text-black bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder="From"
-                />
-                <input
-                  type="date"
-                  value={dateFilters.accreditedEnd}
-                  onChange={(e) => setDateFilters({ ...dateFilters, accreditedEnd: e.target.value })}
-                  className="w-full px-3 py-2 text-sm text-black bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder="To"
-                />
-              </div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Expiration Year</label>
+              <select
+                value={yearFilters.expirationYear}
+                onChange={(e) => setYearFilters({ ...yearFilters, expirationYear: e.target.value })}
+                className="w-full px-3 py-2 text-sm text-black bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Years</option>
+                {availableYears.map(year => (
+                  <option key={`exp-${year}`} value={year}>{year}</option>
+                ))}
+              </select>
             </div>
-            {/* Expiration Date */}
+            {/* Application Received Year */}
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Expiration Date</label>
-              <div className="flex gap-2">
-                <input
-                  type="date"
-                  value={dateFilters.expirationStart}
-                  onChange={(e) => setDateFilters({ ...dateFilters, expirationStart: e.target.value })}
-                  className="w-full px-3 py-2 text-sm text-black bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder="From"
-                />
-                <input
-                  type="date"
-                  value={dateFilters.expirationEnd}
-                  onChange={(e) => setDateFilters({ ...dateFilters, expirationEnd: e.target.value })}
-                  className="w-full px-3 py-2 text-sm text-black bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder="To"
-                />
-              </div>
-            </div>
-            {/* Application Received Date */}
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Application Received</label>
-              <div className="flex gap-2">
-                <input
-                  type="date"
-                  value={dateFilters.receivedStart}
-                  onChange={(e) => setDateFilters({ ...dateFilters, receivedStart: e.target.value })}
-                  className="w-full px-3 py-2 text-sm text-black bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder="From"
-                />
-                <input
-                  type="date"
-                  value={dateFilters.receivedEnd}
-                  onChange={(e) => setDateFilters({ ...dateFilters, receivedEnd: e.target.value })}
-                  className="w-full px-3 py-2 text-sm text-black bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder="To"
-                />
-              </div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Application Received Year</label>
+              <select
+                value={yearFilters.receivedYear}
+                onChange={(e) => setYearFilters({ ...yearFilters, receivedYear: e.target.value })}
+                className="w-full px-3 py-2 text-sm text-black bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Years</option>
+                {availableYears.map(year => (
+                  <option key={`rec-${year}`} value={year}>{year}</option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
