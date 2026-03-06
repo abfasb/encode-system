@@ -158,6 +158,7 @@ const MemoizedTableRow = React.memo(({
         {item.commodity || "Not specified"}
       </td>
 
+      {/* Intervention data: only two columns displayed */}
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 border-r border-gray-200 min-w-32 truncate" title={item.specificIntervention || ""}>
         {item.specificIntervention || "-"}
       </td>
@@ -1208,7 +1209,7 @@ const getClientIP = async () => {
               return "";
             };
             
-            // Helper to get boolean from string "Yes"/"No"
+            // Helper to get boolean from string "Yes"/"No" (though not used in import for this field)
             const getBoolean = (keys, defaultValue = false) => {
               const val = getValue(keys).toLowerCase();
               if (val === 'yes' || val === 'true' || val === '1') return true;
@@ -1235,7 +1236,7 @@ const getClientIP = async () => {
                 active: getValue(["Active", "Status"])?.toLowerCase() === "active" ? "P" : null,
                 inactive: getValue(["Inactive", "Status"])?.toLowerCase() === "inactive" ? "P" : null
               },
-              // New intervention fields
+              // New intervention fields (no boolean in import)
               specificIntervention: getValue(["Specific Intervention", "SPECIFIC INTERVENTION", "Intervention"]),
               interventionAmount: getValue(["Amount", "AMOUNT", "Intervention Amount"])
             });
@@ -1589,8 +1590,8 @@ const exportToExcel = () => {
           <th rowspan="2" style="width: 100px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Contact No.</th>
           <th colspan="6" style="color: black; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">No. of Members</th>
           <th rowspan="2" style="width: 120px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Commodity</th>
-          <!-- New Intervention Columns: parent header spans 3 columns -->
-          <th colspan="3" style="color: black; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Intervention Reviewed</th>
+          <!-- New Intervention Columns: parent header spans 2 columns -->
+          <th colspan="2" style="color: black; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Intervention Reviewed</th>
           <th colspan="2" style="color: black; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Status</th>
         </tr>
         <tr>
@@ -1600,8 +1601,7 @@ const exportToExcel = () => {
           <th style="color: white; color:black; width: 80px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Differently-abled Person</th>
           <th style="color: white; color:black; width: 80px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Young Farmer</th>
           <th style="color: white; color:black; width: 80px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">IPs</th>
-          <!-- Under "Intervention Reviewed": first subheader empty, then two visible headers -->
-          <th style="color: white; color:black; width: 80px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;"></th>
+          <!-- Under "Intervention Reviewed": two visible headers -->
           <th style="color: white; color:black; width: 150px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Specific Intervention</th>
           <th style="color: white; color:black; width: 100px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Amount</th>
           <th style="color: white; color:black; width: 80px; border: 3px solid #000; font-weight: bold; text-align: center; vertical-align: middle;">Active</th>
@@ -1642,7 +1642,7 @@ const exportToExcel = () => {
           <td style="text-align: center">${displayMemberValue(item.members?.young_farmer)}</td>
           <td style="text-align: center">${displayMemberValue(item.members?.ips)}</td>
           <td>${item.commodity || ""}</td>
-          <!-- Intervention data: first column (boolean) under parent, then two detail columns -->
+          <!-- Intervention data: only two detail columns -->
           <td>${item.specificIntervention || "-"}</td>
           <td>${item.interventionAmount || "-"}</td>
           <td style="text-align: center">${item.status === "Active" ? "✓" : ""}</td>
@@ -1719,7 +1719,6 @@ const exportToExcel = () => {
                 <th>Young Farmer</th>
                 <th>IPs</th>
                 <th>Commodity</th>
-                <th>Intervention Reviewed</th>
                 <th>Specific Intervention</th>
                 <th>Amount</th>
                 <th>Status</th>
@@ -1741,7 +1740,6 @@ const exportToExcel = () => {
                   <td>${item.members?.young_farmer || ""}</td>
                   <td>${item.members?.ips || ""}</td>
                   <td>${item.commodity || ""}</td>
-                  <td>${item.interventionReviewed ? "Yes" : "No"}</td>
                   <td>${item.specificIntervention || "-"}</td>
                   <td>${item.interventionAmount || "-"}</td>
                   <td>${item.status || ""}</td>
@@ -2113,7 +2111,7 @@ const exportToExcel = () => {
           <table 
             ref={tableRef}
             className="min-w-full divide-y divide-gray-200 text-sm"
-            style={{ minWidth: '2200px' }}  // Increased to accommodate new columns
+            style={{ minWidth: '2000px' }}  // Adjusted to fit new column count
           >
             <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
               <tr>
@@ -2141,7 +2139,7 @@ const exportToExcel = () => {
                 <th rowSpan="2" className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 min-w-32">
                   Commodity
                 </th>
-                {/* New Intervention Columns: parent header spans 3 columns */}
+                {/* New Intervention Columns: parent header spans 2 columns */}
                 <th colSpan="2" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                   Intervention Reviewed
                 </th>
@@ -2207,8 +2205,7 @@ const exportToExcel = () => {
                     <span className="ml-1">{getSortIcon('members.ips')}</span>
                   </div>
                 </th>
-                {/* Under "Intervention Reviewed": first subheader empty, then two visible headers */}
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-24"></th>
+                {/* Under "Intervention Reviewed": two visible headers */}
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-32">
                   Specific Intervention
                 </th>
