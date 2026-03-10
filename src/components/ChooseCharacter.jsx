@@ -4,6 +4,7 @@ import { doc, updateDoc, arrayUnion, getDoc, onSnapshot, serverTimestamp, setDoc
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db } from "../config/firebase";
 import { storage } from "../config/cloudStorage";
+import SHA256 from "crypto-js/sha256"; // Install: npm install crypto-js
 
 const avatarThemes = [
   { gradient: "from-green-500 to-emerald-400", icon: "🎮" },
@@ -35,6 +36,8 @@ export default function ChooseCharacter() {
   const [characters, setCharacters] = useState([]);
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState("Viewer");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -44,7 +47,13 @@ export default function ChooseCharacter() {
   const [selectedCharId, setSelectedCharId] = useState(null);
   const [hoveredCharId, setHoveredCharId] = useState(null);
   const [error, setError] = useState("");
-  const [uploadWarning, setUploadWarning] = useState(""); // non‑blocking warning
+  const [uploadWarning, setUploadWarning] = useState("");
+
+  // Password modal states
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [selectedCharacter, setSelectedCharacter] = useState(null);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordError, setPasswordError] = useState("");
 
   // Ensure user document exists
   useEffect(() => {
@@ -69,6 +78,7 @@ export default function ChooseCharacter() {
     ensureUserDoc();
   }, []);
 
+  // Real-time listener for characters
   useEffect(() => {
     const userDocRef = doc(db, "users", "mimaropa.ids");
     const unsub = onSnapshot(
@@ -97,7 +107,7 @@ export default function ChooseCharacter() {
     return () => unsub();
   }, []);
 
-  // Cleanup preview URL to avoid memory leaks
+  // Cleanup preview URL
   useEffect(() => {
     return () => {
       if (previewUrl) {
@@ -106,24 +116,47 @@ export default function ChooseCharacter() {
     };
   }, [previewUrl]);
 
-  const selectCharacter = (char) => {
-    setSelectedCharId(char.id);
-    localStorage.setItem("activeCharacter", JSON.stringify(char));
-    setTimeout(() => {
-      navigate("/admin/dashboard");
-    }, 300);
+  // Handle character click: open password modal
+  const handleCharacterClick = (char) => {
+    setSelectedCharacter(char);
+    setShowPasswordModal(true);
+    setPasswordInput("");
+    setPasswordError("");
   };
 
+  // Verify password and proceed
+  const verifyPassword = () => {
+    if (!selectedCharacter) return;
+
+    // If character has no password (old data), maybe allow? But we'll require password.
+    if (!selectedCharacter.passwordHash) {
+      setPasswordError("This account has no password set. Please contact admin.");
+      return;
+    }
+
+    const hashedInput = SHA256(passwordInput).toString();
+    if (hashedInput === selectedCharacter.passwordHash) {
+      // Correct password
+      localStorage.setItem("activeCharacter", JSON.stringify(selectedCharacter));
+      setSelectedCharId(selectedCharacter.id);
+      setShowPasswordModal(false);
+      setTimeout(() => {
+        navigate("/admin/dashboard");
+      }, 300);
+    } else {
+      setPasswordError("Incorrect password. Try again.");
+    }
+  };
+
+  // Handle file selection
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         alert("File too large. Max size is 5MB.");
         e.target.value = null;
         return;
       }
-      // Validate file type
       if (!file.type.startsWith("image/")) {
         alert("Please select an image file.");
         e.target.value = null;
@@ -131,13 +164,14 @@ export default function ChooseCharacter() {
       }
       setSelectedFile(file);
       setPreviewUrl(URL.createObjectURL(file));
-      setUploadWarning(""); // clear previous warning
+      setUploadWarning("");
     } else {
       setSelectedFile(null);
       setPreviewUrl(null);
     }
   };
 
+  // Upload avatar to Firebase Storage
   const uploadAvatar = async (file, characterId) => {
     const storageRef = ref(storage, `avatars/${characterId}_${Date.now()}`);
     const metadata = {
@@ -149,8 +183,8 @@ export default function ChooseCharacter() {
     return downloadUrl;
   };
 
+  // Add new character
   const addCharacter = async () => {
-    // Trim and validate
     const trimmedName = newName.trim();
     if (!trimmedName) {
       alert("Please enter a name");
@@ -160,19 +194,23 @@ export default function ChooseCharacter() {
       alert("Please select a role");
       return;
     }
+    if (!newPassword) {
+      alert("Please enter a password");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      alert("Passwords do not match");
+      return;
+    }
 
-    // Admin password check
+    // Admin password check for Admin role
     if (newRole === "Admin" && adminPassword !== "DAMIMAROPA") {
       alert("Incorrect admin password!");
       return;
     }
 
     // Check duplicate name (case‑insensitive)
-    if (
-      characters.some(
-        (c) => c.name.toLowerCase() === trimmedName.toLowerCase()
-      )
-    ) {
+    if (characters.some((c) => c.name.toLowerCase() === trimmedName.toLowerCase())) {
       alert("Character with this name already exists!");
       return;
     }
@@ -182,14 +220,18 @@ export default function ChooseCharacter() {
     setError("");
     setUploadWarning("");
 
+    // Hash the password
+    const passwordHash = SHA256(newPassword).toString();
+
     const newCharacter = {
       id: `char_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: trimmedName,
       role: newRole,
+      passwordHash, // store hash, not plaintext
       createdAt: new Date().toISOString(),
     };
 
-    // Attempt avatar upload (if file selected) – non‑blocking
+    // Attempt avatar upload (non‑blocking)
     if (selectedFile) {
       try {
         const photoURL = await uploadAvatar(selectedFile, newCharacter.id);
@@ -197,15 +239,7 @@ export default function ChooseCharacter() {
         console.log("Avatar uploaded successfully");
       } catch (uploadError) {
         console.error("Avatar upload failed (non‑blocking):", uploadError);
-        // Log full details if available
-        if (uploadError.code === 'storage/unknown') {
-          console.error('Server response:', uploadError.serverResponse);
-        }
-        // Set a warning but continue
-        setUploadWarning(
-          "Avatar could not be uploaded. You can update it later."
-        );
-        // Do NOT return – character is still created without photo
+        setUploadWarning("Avatar could not be uploaded. You can update it later.");
       }
     }
 
@@ -239,9 +273,11 @@ export default function ChooseCharacter() {
       }
     }
 
-    // Reset all form states – regardless of upload success/failure
+    // Reset form
     setNewName("");
     setNewRole("Viewer");
+    setNewPassword("");
+    setConfirmPassword("");
     setAdminPassword("");
     setSelectedFile(null);
     setPreviewUrl(null);
@@ -249,6 +285,7 @@ export default function ChooseCharacter() {
     setUploading(false);
   };
 
+  // Helper functions for avatar theme and role icon (unchanged)
   const getAvatarTheme = (name) => {
     let hash = 0;
     for (let i = 0; i < name.length; i++) {
@@ -269,14 +306,14 @@ export default function ChooseCharacter() {
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === "Enter" && newName && newRole && !adding && !uploading) {
+    if (e.key === "Enter" && newName && newRole && newPassword && newPassword === confirmPassword && !adding && !uploading) {
       addCharacter();
     }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-green-900 to-emerald-900 relative overflow-hidden">
-      {/* Animated background orbs – unchanged */}
+      {/* Animated background (same as before) */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-full bg-[url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%2322c55e\' fill-opacity=\'0.05\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-30"></div>
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-t from-transparent via-green-500/5 to-transparent animate-pulse"></div>
@@ -303,16 +340,14 @@ export default function ChooseCharacter() {
             </div>
           </div>
 
-          {/* Error message */}
+          {/* Error & warning messages */}
           {error && (
-            <div className="mb-6 bg-red-500/20 border border-red-500/50 rounded-lg p-4 text-white text-center">
+            <div className="mb-6 bg-red-500/20 border border-red-500/50 rounded-lg p-4 text-white text-center backdrop-blur-sm">
               {error}
             </div>
           )}
-
-          {/* Upload warning (non‑blocking) */}
           {uploadWarning && (
-            <div className="mb-6 bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-4 text-white text-center">
+            <div className="mb-6 bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-4 text-white text-center backdrop-blur-sm">
               ⚠️ {uploadWarning}
             </div>
           )}
@@ -339,7 +374,7 @@ export default function ChooseCharacter() {
                   return (
                     <div
                       key={char.id}
-                      onClick={() => selectCharacter(char)}
+                      onClick={() => handleCharacterClick(char)}
                       onMouseEnter={() => setHoveredCharId(char.id)}
                       onMouseLeave={() => setHoveredCharId(null)}
                       className={`group relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-lg border ${
@@ -351,9 +386,7 @@ export default function ChooseCharacter() {
                       }`}
                     >
                       {/* Animated glow on hover */}
-                      <div
-                        className={`absolute inset-0 rounded-2xl bg-gradient-to-br from-green-400/0 to-green-600/0 group-hover:from-green-400/20 group-hover:to-green-600/20 transition-all duration-500 pointer-events-none`}
-                      ></div>
+                      <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-green-400/0 to-green-600/0 group-hover:from-green-400/20 group-hover:to-green-600/20 transition-all duration-500 pointer-events-none"></div>
 
                       {/* Avatar */}
                       <div className="relative mb-4">
@@ -397,7 +430,7 @@ export default function ChooseCharacter() {
                 })}
 
                 {/* Add New Character Card */}
-                <div className="relative bg-gradient-to-br from-white/5 to-white/0 backdrop-blur-lg border border-white/20 rounded-2xl p-6 flex flex-col items-center justify-center min-h-[220px] group hover:border-green-400/50 transition-all duration-300 hover:shadow-xl hover:shadow-green-500/10">
+                <div className="relative bg-gradient-to-br from-white/5 to-white/0 backdrop-blur-lg border border-white/20 rounded-2xl p-6 flex flex-col items-center justify-center min-h-[280px] group hover:border-green-400/50 transition-all duration-300 hover:shadow-xl hover:shadow-green-500/10">
                   {!adding ? (
                     <>
                       <div className="w-20 h-20 rounded-full bg-green-600/20 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
@@ -435,7 +468,7 @@ export default function ChooseCharacter() {
                         Create Character
                       </h3>
 
-                      {/* Name input */}
+                      {/* Name */}
                       <input
                         type="text"
                         placeholder="Name"
@@ -455,13 +488,33 @@ export default function ChooseCharacter() {
                       >
                         <option value="Viewer" className="bg-gray-800">Viewer</option>
                         <option value="Admin" className="bg-gray-800">Admin</option>
+                        {/* Add other roles as needed */}
                       </select>
 
-                      {/* Admin password field (only shown if Admin selected) */}
+                      {/* Password */}
+                      <input
+                        type="password"
+                        placeholder="Password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        className="w-full bg-white/10 text-white placeholder-white/50 rounded-lg px-4 py-2 border border-white/20 focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition"
+                      />
+
+                      {/* Confirm Password */}
+                      <input
+                        type="password"
+                        placeholder="Confirm Password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        className="w-full bg-white/10 text-white placeholder-white/50 rounded-lg px-4 py-2 border border-white/20 focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition"
+                      />
+
                       {newRole === "Admin" && (
                         <input
                           type="password"
-                          placeholder="Admin Password"
+                          placeholder="Admin VERIFICATION"
                           value={adminPassword}
                           onChange={(e) => setAdminPassword(e.target.value)}
                           onKeyDown={handleKeyDown}
@@ -493,19 +546,20 @@ export default function ChooseCharacter() {
                         )}
                       </div>
 
-                      {/* Action buttons */}
                       <div className="flex gap-2">
                         <button
                           onClick={addCharacter}
                           className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          Add
+                          {uploading ? "Uploading..." : "Add"}
                         </button>
                         <button
                           onClick={() => {
                             setAdding(false);
                             setNewName("");
                             setNewRole("Viewer");
+                            setNewPassword("");
+                            setConfirmPassword("");
                             setAdminPassword("");
                             setSelectedFile(null);
                             setPreviewUrl(null);
@@ -537,6 +591,109 @@ export default function ChooseCharacter() {
         </div>
       </div>
 
+      {/* Password Modal – Epic Glassmorphism Design */}
+      {showPasswordModal && selectedCharacter && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-md bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl border border-white/20 rounded-3xl shadow-2xl transform animate-slide-up">
+            {/* Decorative elements */}
+            <div className="absolute -top-20 -right-20 w-40 h-40 bg-green-400 rounded-full mix-blend-multiply filter blur-3xl opacity-30"></div>
+            <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-emerald-400 rounded-full mix-blend-multiply filter blur-3xl opacity-30"></div>
+
+            <div className="relative p-8">
+              {/* Close button */}
+              <button
+                onClick={() => setShowPasswordModal(false)}
+                className="absolute top-4 right-4 text-white/60 hover:text-white transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+
+              {/* Avatar preview */}
+              <div className="flex flex-col items-center mb-6">
+                <div className="relative mb-4">
+                  {selectedCharacter.photoURL ? (
+                    <img
+                      src={selectedCharacter.photoURL}
+                      alt={selectedCharacter.name}
+                      className="w-24 h-24 rounded-full object-cover border-4 border-green-400/50 shadow-xl"
+                    />
+                  ) : (
+                    <div
+                      className={`w-24 h-24 rounded-full bg-gradient-to-br ${getAvatarTheme(selectedCharacter.name).gradient} p-1 shadow-xl`}
+                    >
+                      <div className="w-full h-full rounded-full bg-gray-900/60 backdrop-blur-sm flex items-center justify-center border-2 border-white/30">
+                        <span className="text-4xl filter drop-shadow-lg">
+                          {getAvatarTheme(selectedCharacter.name).icon}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-green-600 text-white text-xs px-3 py-1 rounded-full shadow-lg whitespace-nowrap">
+                    {selectedCharacter.role}
+                  </div>
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-1">{selectedCharacter.name}</h2>
+                <p className="text-green-200 text-sm opacity-80">Enter your password to continue</p>
+              </div>
+
+              {/* Password input */}
+              <div className="space-y-4">
+                <div className="relative">
+                  <input
+                    type="password"
+                    placeholder="Password"
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && verifyPassword()}
+                    className="w-full bg-white/10 text-white placeholder-white/50 rounded-xl px-4 py-3 pl-10 border border-white/20 focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition"
+                    autoFocus
+                  />
+                  <svg
+                    className="absolute left-3 top-3.5 w-5 h-5 text-white/50"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                    />
+                  </svg>
+                </div>
+
+                {passwordError && (
+                  <p className="text-red-400 text-sm text-center animate-shake">{passwordError}</p>
+                )}
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={verifyPassword}
+                    className="flex-1 px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-semibold rounded-xl shadow-lg transform transition hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 focus:ring-offset-transparent"
+                  >
+                    Unlock Account
+                  </button>
+                  <button
+                    onClick={() => setShowPasswordModal(false)}
+                    className="px-4 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl transition"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+
+              {/* Hint */}
+              <p className="text-center text-xs text-white/40 mt-6">
+                Your password is securely hashed and never stored in plain text.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Animation styles */}
       <style>{`
         @keyframes blob {
@@ -558,6 +715,17 @@ export default function ChooseCharacter() {
           100% { opacity: 1; }
         }
         .animate-fade-in { animation: fade-in 0.8s ease-out; }
+        @keyframes slide-up {
+          0% { opacity: 0; transform: translateY(20px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+        .animate-slide-up { animation: slide-up 0.4s ease-out; }
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
+          20%, 40%, 60%, 80% { transform: translateX(2px); }
+        }
+        .animate-shake { animation: shake 0.5s ease-in-out; }
       `}</style>
     </div>
   );
