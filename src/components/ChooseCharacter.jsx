@@ -1,20 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { initializeApp } from "firebase/app";
-import {
-  getFirestore,
-  doc,
-  updateDoc,
-  arrayUnion,
-  getDoc,
-  onSnapshot,
-  serverTimestamp,
-  setDoc,
-} from "firebase/firestore";
-import { firebaseConfig } from "../config/firebase";
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+import { doc, updateDoc, arrayUnion, getDoc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db } from "../config/firebase";
+import { storage } from "../config/cloudStorage";
 
 const avatarThemes = [
   { gradient: "from-green-500 to-emerald-400", icon: "🎮" },
@@ -45,12 +34,17 @@ export default function ChooseCharacter() {
   const navigate = useNavigate();
   const [characters, setCharacters] = useState([]);
   const [newName, setNewName] = useState("");
-  const [newRole, setNewRole] = useState("");
+  const [newRole, setNewRole] = useState("Viewer");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [selectedCharId, setSelectedCharId] = useState(null);
   const [hoveredCharId, setHoveredCharId] = useState(null);
   const [error, setError] = useState("");
+  const [uploadWarning, setUploadWarning] = useState(""); // non‑blocking warning
 
   // Ensure user document exists
   useEffect(() => {
@@ -65,6 +59,7 @@ export default function ChooseCharacter() {
             characters: [],
             createdAt: serverTimestamp(),
           });
+          console.log("User document created");
         } catch (err) {
           console.error("Error creating user document:", err);
           setError("Failed to initialize user data.");
@@ -90,7 +85,6 @@ export default function ChooseCharacter() {
       },
       (error) => {
         console.error("Error fetching characters:", error);
-        // Fallback to localStorage if offline
         const localChars = localStorage.getItem("characters");
         if (localChars) {
           setCharacters(JSON.parse(localChars));
@@ -103,6 +97,15 @@ export default function ChooseCharacter() {
     return () => unsub();
   }, []);
 
+  // Cleanup preview URL to avoid memory leaks
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+
   const selectCharacter = (char) => {
     setSelectedCharId(char.id);
     localStorage.setItem("activeCharacter", JSON.stringify(char));
@@ -111,15 +114,63 @@ export default function ChooseCharacter() {
     }, 300);
   };
 
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert("File too large. Max size is 5MB.");
+        e.target.value = null;
+        return;
+      }
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        alert("Please select an image file.");
+        e.target.value = null;
+        return;
+      }
+      setSelectedFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+      setUploadWarning(""); // clear previous warning
+    } else {
+      setSelectedFile(null);
+      setPreviewUrl(null);
+    }
+  };
+
+  const uploadAvatar = async (file, characterId) => {
+    const storageRef = ref(storage, `avatars/${characterId}_${Date.now()}`);
+    const metadata = {
+      contentType: file.type,
+      cacheControl: "public,max-age=31536000",
+    };
+    await uploadBytes(storageRef, file, metadata);
+    const downloadUrl = await getDownloadURL(storageRef);
+    return downloadUrl;
+  };
+
   const addCharacter = async () => {
-    if (!newName.trim() || !newRole.trim()) {
-      alert("Please enter both name and role");
+    // Trim and validate
+    const trimmedName = newName.trim();
+    if (!trimmedName) {
+      alert("Please enter a name");
+      return;
+    }
+    if (!newRole) {
+      alert("Please select a role");
       return;
     }
 
+    // Admin password check
+    if (newRole === "Admin" && adminPassword !== "DAMIMAROPA") {
+      alert("Incorrect admin password!");
+      return;
+    }
+
+    // Check duplicate name (case‑insensitive)
     if (
       characters.some(
-        (c) => c.name.toLowerCase() === newName.trim().toLowerCase()
+        (c) => c.name.toLowerCase() === trimmedName.toLowerCase()
       )
     ) {
       alert("Character with this name already exists!");
@@ -127,31 +178,77 @@ export default function ChooseCharacter() {
     }
 
     setAdding(true);
+    setUploading(!!selectedFile);
     setError("");
+    setUploadWarning("");
 
     const newCharacter = {
       id: `char_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      name: newName.trim(),
-      role: newRole.trim(),
+      name: trimmedName,
+      role: newRole,
       createdAt: new Date().toISOString(),
     };
 
+    // Attempt avatar upload (if file selected) – non‑blocking
+    if (selectedFile) {
+      try {
+        const photoURL = await uploadAvatar(selectedFile, newCharacter.id);
+        newCharacter.photoURL = photoURL;
+        console.log("Avatar uploaded successfully");
+      } catch (uploadError) {
+        console.error("Avatar upload failed (non‑blocking):", uploadError);
+        // Log full details if available
+        if (uploadError.code === 'storage/unknown') {
+          console.error('Server response:', uploadError.serverResponse);
+        }
+        // Set a warning but continue
+        setUploadWarning(
+          "Avatar could not be uploaded. You can update it later."
+        );
+        // Do NOT return – character is still created without photo
+      }
+    }
+
+    const userDocRef = doc(db, "users", "mimaropa.ids");
+
     try {
-      const userDocRef = doc(db, "users", "mimaropa.ids");
       await updateDoc(userDocRef, {
         characters: arrayUnion(newCharacter),
       });
-      setNewName("");
-      setNewRole("");
-      setAdding(false);
+      console.log("Character added via updateDoc");
     } catch (error) {
-      console.error("Error adding character:", error);
-      setError("Failed to add character. Please try again.");
-      setAdding(false);
+      console.error("Update failed, attempting to create document:", error);
+      try {
+        await setDoc(
+          userDocRef,
+          {
+            email: "mimaropa.ids@gmail.com",
+            name: "Department of Agriculture",
+            characters: [newCharacter],
+            createdAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+        console.log("Character added via setDoc");
+      } catch (innerError) {
+        console.error("Failed to create document:", innerError);
+        setError("Failed to add character. Please try again.");
+        setAdding(false);
+        setUploading(false);
+        return;
+      }
     }
+
+    // Reset all form states – regardless of upload success/failure
+    setNewName("");
+    setNewRole("Viewer");
+    setAdminPassword("");
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    setAdding(false);
+    setUploading(false);
   };
 
-  // Get avatar theme based on name (deterministic)
   const getAvatarTheme = (name) => {
     let hash = 0;
     for (let i = 0; i < name.length; i++) {
@@ -161,7 +258,6 @@ export default function ChooseCharacter() {
     return avatarThemes[index];
   };
 
-  // Get role icon
   const getRoleIcon = (role) => {
     const lowerRole = role.toLowerCase();
     for (const key in roleIcons) {
@@ -172,16 +268,15 @@ export default function ChooseCharacter() {
     return roleIcons.default;
   };
 
-  // Handle Enter key
   const handleKeyDown = (e) => {
-    if (e.key === "Enter" && newName && newRole && !adding) {
+    if (e.key === "Enter" && newName && newRole && !adding && !uploading) {
       addCharacter();
     }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-green-900 to-emerald-900 relative overflow-hidden">
-      {/* Animated background orbs */}
+      {/* Animated background orbs – unchanged */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-full bg-[url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%2322c55e\' fill-opacity=\'0.05\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-30"></div>
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-t from-transparent via-green-500/5 to-transparent animate-pulse"></div>
@@ -197,7 +292,7 @@ export default function ChooseCharacter() {
           <div className="text-center mb-12">
             <h1 className="text-5xl md:text-6xl font-bold text-white mb-4 tracking-tight drop-shadow-lg animate-slide-down">
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-green-300 via-white to-emerald-300">
-                CHOOSE YOUR GAMERTAG
+                CHOOSE YOUR DA ACCOUNT
               </span>
             </h1>
             <p className="text-green-200 text-lg md:text-xl max-w-2xl mx-auto opacity-90 animate-fade-in">
@@ -212,6 +307,13 @@ export default function ChooseCharacter() {
           {error && (
             <div className="mb-6 bg-red-500/20 border border-red-500/50 rounded-lg p-4 text-white text-center">
               {error}
+            </div>
+          )}
+
+          {/* Upload warning (non‑blocking) */}
+          {uploadWarning && (
+            <div className="mb-6 bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-4 text-white text-center">
+              ⚠️ {uploadWarning}
             </div>
           )}
 
@@ -231,7 +333,6 @@ export default function ChooseCharacter() {
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 mb-10">
                 {characters.map((char) => {
                   const theme = getAvatarTheme(char.name);
-                  const roleIcon = getRoleIcon(char.role);
                   const isSelected = selectedCharId === char.id;
                   const isHovered = hoveredCharId === char.id;
 
@@ -254,17 +355,25 @@ export default function ChooseCharacter() {
                         className={`absolute inset-0 rounded-2xl bg-gradient-to-br from-green-400/0 to-green-600/0 group-hover:from-green-400/20 group-hover:to-green-600/20 transition-all duration-500 pointer-events-none`}
                       ></div>
 
-                      {/* Xbox‑style avatar */}
+                      {/* Avatar */}
                       <div className="relative mb-4">
-                        <div
-                          className={`w-24 h-24 mx-auto rounded-full bg-gradient-to-br ${theme.gradient} p-1 shadow-xl transform group-hover:rotate-6 transition-transform duration-300`}
-                        >
-                          <div className="w-full h-full rounded-full bg-gray-900/60 backdrop-blur-sm flex items-center justify-center border-2 border-white/30">
-                            <span className="text-4xl filter drop-shadow-lg">
-                              {theme.icon}
-                            </span>
+                        {char.photoURL ? (
+                          <img
+                            src={char.photoURL}
+                            alt={char.name}
+                            className="w-24 h-24 mx-auto rounded-full object-cover border-4 border-white/30 shadow-xl transform group-hover:rotate-6 transition-transform duration-300"
+                          />
+                        ) : (
+                          <div
+                            className={`w-24 h-24 mx-auto rounded-full bg-gradient-to-br ${theme.gradient} p-1 shadow-xl transform group-hover:rotate-6 transition-transform duration-300`}
+                          >
+                            <div className="w-full h-full rounded-full bg-gray-900/60 backdrop-blur-sm flex items-center justify-center border-2 border-white/30">
+                              <span className="text-4xl filter drop-shadow-lg">
+                                {theme.icon}
+                              </span>
+                            </div>
                           </div>
-                        </div>
+                        )}
                         {/* Role badge */}
                         <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-green-600 text-white text-xs px-3 py-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">
                           {char.role}
@@ -308,7 +417,7 @@ export default function ChooseCharacter() {
                         </svg>
                       </div>
                       <h3 className="text-lg font-semibold text-white mb-2">
-                        New Gamertag
+                        New Account
                       </h3>
                       <p className="text-sm text-green-200 text-center opacity-80 mb-4">
                         Create a new identity
@@ -325,6 +434,8 @@ export default function ChooseCharacter() {
                       <h3 className="text-lg font-semibold text-white text-center">
                         Create Character
                       </h3>
+
+                      {/* Name input */}
                       <input
                         type="text"
                         placeholder="Name"
@@ -334,27 +445,71 @@ export default function ChooseCharacter() {
                         className="w-full bg-white/10 text-white placeholder-white/50 rounded-lg px-4 py-2 border border-white/20 focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition"
                         autoFocus
                       />
-                      <input
-                        type="text"
-                        placeholder="Role (e.g., Reviewer)"
+
+                      {/* Role dropdown */}
+                      <select
                         value={newRole}
                         onChange={(e) => setNewRole(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        className="w-full bg-white/10 text-white placeholder-white/50 rounded-lg px-4 py-2 border border-white/20 focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition"
-                      />
+                        className="w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition appearance-none cursor-pointer"
+                      >
+                        <option value="Viewer" className="bg-gray-800">Viewer</option>
+                        <option value="Admin" className="bg-gray-800">Admin</option>
+                      </select>
+
+                      {/* Admin password field (only shown if Admin selected) */}
+                      {newRole === "Admin" && (
+                        <input
+                          type="password"
+                          placeholder="Admin Password"
+                          value={adminPassword}
+                          onChange={(e) => setAdminPassword(e.target.value)}
+                          onKeyDown={handleKeyDown}
+                          className="w-full bg-white/10 text-white placeholder-white/50 rounded-lg px-4 py-2 border border-white/20 focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition"
+                        />
+                      )}
+
+                      {/* Avatar upload */}
+                      <div className="flex items-center space-x-3">
+                        <label className="flex-1 cursor-pointer">
+                          <span className="block w-full bg-white/10 hover:bg-white/20 text-white text-center rounded-lg px-4 py-2 border border-white/20 transition">
+                            {selectedFile ? "Change Avatar" : "Upload Avatar (optional)"}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleFileChange}
+                            className="hidden"
+                          />
+                        </label>
+                        {previewUrl && (
+                          <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-green-400">
+                            <img
+                              src={previewUrl}
+                              alt="Preview"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Action buttons */}
                       <div className="flex gap-2">
                         <button
                           onClick={addCharacter}
-                          disabled={!newName || !newRole || adding}
                           className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {adding ? "Adding..." : "Add"}
+                          Add
                         </button>
                         <button
                           onClick={() => {
                             setAdding(false);
                             setNewName("");
-                            setNewRole("");
+                            setNewRole("Viewer");
+                            setAdminPassword("");
+                            setSelectedFile(null);
+                            setPreviewUrl(null);
+                            setUploadWarning("");
                           }}
                           className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-colors"
                         >
@@ -369,7 +524,7 @@ export default function ChooseCharacter() {
               {/* Hint message */}
               {characters.length === 0 && !adding && (
                 <div className="text-center text-green-200 animate-pulse">
-                  No characters yet. Create your first gamertag!
+                  No characters yet. Create your first Account!
                 </div>
               )}
             </>
@@ -377,7 +532,7 @@ export default function ChooseCharacter() {
 
           {/* Footer */}
           <div className="text-center mt-12 text-green-300/60 text-sm">
-            <p>Select a gamertag to continue. Each person should have their own identity.</p>
+            <p>Select your DA Account to continue. Each person should have their own identity.</p>
           </div>
         </div>
       </div>
@@ -385,52 +540,24 @@ export default function ChooseCharacter() {
       {/* Animation styles */}
       <style>{`
         @keyframes blob {
-          0% {
-            transform: translate(0px, 0px) scale(1);
-          }
-          33% {
-            transform: translate(30px, -50px) scale(1.1);
-          }
-          66% {
-            transform: translate(-20px, 20px) scale(0.9);
-          }
-          100% {
-            transform: translate(0px, 0px) scale(1);
-          }
+          0% { transform: translate(0px, 0px) scale(1); }
+          33% { transform: translate(30px, -50px) scale(1.1); }
+          66% { transform: translate(-20px, 20px) scale(0.9); }
+          100% { transform: translate(0px, 0px) scale(1); }
         }
-        .animate-blob {
-          animation: blob 7s infinite;
-        }
-        .animation-delay-2000 {
-          animation-delay: 2s;
-        }
-        .animation-delay-4000 {
-          animation-delay: 4s;
-        }
+        .animate-blob { animation: blob 7s infinite; }
+        .animation-delay-2000 { animation-delay: 2s; }
+        .animation-delay-4000 { animation-delay: 4s; }
         @keyframes slide-down {
-          0% {
-            opacity: 0;
-            transform: translateY(-20px);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          0% { opacity: 0; transform: translateY(-20px); }
+          100% { opacity: 1; transform: translateY(0); }
         }
-        .animate-slide-down {
-          animation: slide-down 0.6s ease-out;
-        }
+        .animate-slide-down { animation: slide-down 0.6s ease-out; }
         @keyframes fade-in {
-          0% {
-            opacity: 0;
-          }
-          100% {
-            opacity: 1;
-          }
+          0% { opacity: 0; }
+          100% { opacity: 1; }
         }
-        .animate-fade-in {
-          animation: fade-in 0.8s ease-out;
-        }
+        .animate-fade-in { animation: fade-in 0.8s ease-out; }
       `}</style>
     </div>
   );
