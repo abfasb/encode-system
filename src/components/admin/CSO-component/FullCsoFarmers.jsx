@@ -2,7 +2,16 @@ import React, { useState, useEffect, useMemo } from 'react';
 import DataTable from 'react-data-table-component';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { getFirestore, collection, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  doc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where
+} from 'firebase/firestore';
 import {
   Eye,
   Edit,
@@ -37,7 +46,6 @@ const formatDate = (dateString) => {
 // ---------- Helper: Normalize province name to title case ----------
 const normalizeProvince = (prov) => {
   if (!prov) return '';
-  // Trim and convert to title case: first letter of each word uppercase, rest lowercase
   return prov
     .trim()
     .toLowerCase()
@@ -143,7 +151,7 @@ const FullCsoFarmers = () => {
     };
   }, [data]);
 
-  // ---------- Province dropdown options (normalized, unique, sorted) ----------
+  // ---------- Province dropdown options ----------
   const provinceOptions = useMemo(() => {
     const normSet = new Set();
     data.forEach(item => {
@@ -151,7 +159,6 @@ const FullCsoFarmers = () => {
         normSet.add(normalizeProvince(item.province));
       }
     });
-    // MIMAROPA standard order
     const mimaropaOrder = ['Occidental Mindoro', 'Oriental Mindoro', 'Marinduque', 'Palawan', 'Romblon'];
     const sorted = Array.from(normSet).sort((a, b) => {
       const idxA = mimaropaOrder.indexOf(a);
@@ -166,6 +173,11 @@ const FullCsoFarmers = () => {
 
   // ---------- Edit / Delete Handlers ----------
   const handleEdit = (row) => {
+    // Prevent editing of records originating from RCEF
+    if (row.source === 'rcef') {
+      setError('This record is managed in the RCEF module and cannot be edited here.');
+      return;
+    }
     setSelectedApplication(row);
     setEditForm(row);
     setShowEditModal(true);
@@ -202,6 +214,11 @@ const FullCsoFarmers = () => {
   };
 
   const openDeleteModal = (row) => {
+    // Prevent deletion of records originating from RCEF
+    if (row.source === 'rcef') {
+      setError('This record is managed in the RCEF module and cannot be deleted here.');
+      return;
+    }
     setSelectedApplication(row);
     setShowDeleteModal(true);
   };
@@ -211,7 +228,7 @@ const FullCsoFarmers = () => {
     setShowViewModal(true);
   };
 
-  // ---------- Filter & Search (using normalized province) ----------
+  // ---------- Filter & Search ----------
   const filteredData = useMemo(() => {
     let filtered = [...data];
 
@@ -323,15 +340,25 @@ const FullCsoFarmers = () => {
           </button>
           <button
             onClick={() => handleEdit(row)}
-            className="p-1.5 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-            title="Edit"
+            className={`p-1.5 rounded-lg transition-colors ${
+              row.source === 'rcef'
+                ? 'text-gray-300 cursor-not-allowed'
+                : 'text-gray-600 hover:text-green-600 hover:bg-green-50'
+            }`}
+            title={row.source === 'rcef' ? 'Managed in RCEF module' : 'Edit'}
+            disabled={row.source === 'rcef'}
           >
             <Edit className="h-4 w-4" />
           </button>
           <button
             onClick={() => openDeleteModal(row)}
-            className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            title="Delete"
+            className={`p-1.5 rounded-lg transition-colors ${
+              row.source === 'rcef'
+                ? 'text-gray-300 cursor-not-allowed'
+                : 'text-gray-600 hover:text-red-600 hover:bg-red-50'
+            }`}
+            title={row.source === 'rcef' ? 'Managed in RCEF module' : 'Delete'}
+            disabled={row.source === 'rcef'}
           >
             <Trash2 className="h-4 w-4" />
           </button>
@@ -433,7 +460,7 @@ const FullCsoFarmers = () => {
         });
       };
 
-      // Group data by province (normalized) and then by municipality
+      // Group data by province and municipality
       const grouped = {};
       data.forEach(item => {
         const prov = normalizeProvince(item.province) || 'Unknown';
@@ -511,7 +538,7 @@ const FullCsoFarmers = () => {
 
             [2, 4, 5, 6, 8, 9, 10, 11, 15, 16, 17, 18].forEach(col => {
               const cell = row.getCell(col);
-              cell.alignment = { horizontal: 'center', vertical: 'middle' };
+              if (cell) cell.alignment = { horizontal: 'center', vertical: 'middle' };
             });
           });
         });
@@ -540,7 +567,6 @@ const FullCsoFarmers = () => {
     </label>
   );
 
-  // ---------- Input Field Component ----------
   const handleEditChange = (e) => {
     const { name, value, type, checked } = e.target;
     if (name.startsWith('interventions.')) {
@@ -824,6 +850,7 @@ const FullCsoFarmers = () => {
                 value={editForm.no || ''}
                 onChange={handleEditChange}
                 className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                disabled // No is auto‑generated in RCEF, but here we keep it as read‑only for consistency
               />
             </div>
             <div>
@@ -839,7 +866,7 @@ const FullCsoFarmers = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Date Accredited</label>
               <input
-                type="text"
+                type="date"
                 name="date_accredited"
                 value={editForm.date_accredited || ''}
                 onChange={handleEditChange}
@@ -849,9 +876,19 @@ const FullCsoFarmers = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Date Expiration</label>
               <input
-                type="text"
+                type="date"
                 name="date_expiration"
                 value={editForm.date_expiration || ''}
+                onChange={handleEditChange}
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date Application Received</label>
+              <input
+                type="date"
+                name="date_application_received"
+                value={editForm.date_application_received || ''}
                 onChange={handleEditChange}
                 className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
@@ -1044,6 +1081,11 @@ const FullCsoFarmers = () => {
                     <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
                       {selectedApplication.type_fca || '—'}
                     </span>
+                    {selectedApplication.source === 'rcef' && (
+                      <span className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-sm font-medium">
+                        Source: RCEF
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1151,9 +1193,19 @@ const FullCsoFarmers = () => {
               <button
                 onClick={() => {
                   setShowViewModal(false);
-                  handleEdit(selectedApplication);
+                  // If not from RCEF, allow edit
+                  if (selectedApplication.source !== 'rcef') {
+                    handleEdit(selectedApplication);
+                  } else {
+                    setError('This record is managed in the RCEF module and cannot be edited here.');
+                  }
                 }}
-                className="px-5 py-2.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-colors"
+                className={`px-5 py-2.5 font-medium rounded-xl transition-colors ${
+                  selectedApplication.source === 'rcef'
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+                disabled={selectedApplication.source === 'rcef'}
               >
                 <Edit className="h-4 w-4 inline mr-2" />
                 Edit Application
@@ -1161,9 +1213,18 @@ const FullCsoFarmers = () => {
               <button
                 onClick={() => {
                   setShowViewModal(false);
-                  openDeleteModal(selectedApplication);
+                  if (selectedApplication.source !== 'rcef') {
+                    openDeleteModal(selectedApplication);
+                  } else {
+                    setError('This record is managed in the RCEF module and cannot be deleted here.');
+                  }
                 }}
-                className="px-5 py-2.5 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 transition-colors"
+                className={`px-5 py-2.5 font-medium rounded-xl transition-colors ${
+                  selectedApplication.source === 'rcef'
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-red-600 text-white hover:bg-red-700'
+                }`}
+                disabled={selectedApplication.source === 'rcef'}
               >
                 <Trash2 className="h-4 w-4 inline mr-2" />
                 Delete Application

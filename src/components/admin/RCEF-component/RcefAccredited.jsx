@@ -2,7 +2,19 @@ import React, { useState, useEffect, useMemo } from 'react';
 import DataTable from 'react-data-table-component';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { getFirestore, collection, getDocs, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  doc,
+  updateDoc,
+  deleteDoc,
+  addDoc,
+  query,
+  where,
+  orderBy,
+  limit
+} from 'firebase/firestore';
 import {
   Eye,
   Edit,
@@ -22,6 +34,15 @@ import {
   Plus
 } from 'lucide-react';
 import { db } from '../../../config/firebase';
+
+// ---------- Constants ----------
+const MIMAROPA_PROVINCES = [
+  'Occidental Mindoro',
+  'Oriental Mindoro',
+  'Marinduque',
+  'Palawan',
+  'Romblon'
+];
 
 // ---------- Helper: Format date ----------
 const formatDate = (dateString) => {
@@ -102,9 +123,8 @@ const RcefAccredited = () => {
   const [selectedApplication, setSelectedApplication] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [createForm, setCreateForm] = useState({
-    province: '',
+    province: MIMAROPA_PROVINCES[0], // default first province
     municipality: '',
-    no: '',
     name: '',
     date_accredited: '',
     date_expiration: '',
@@ -190,7 +210,7 @@ const RcefAccredited = () => {
         normSet.add(normalizeProvince(item.province));
       }
     });
-    const mimaropaOrder = ['Occidental Mindoro', 'Oriental Mindoro', 'Marinduque', 'Palawan', 'Romblon'];
+    const mimaropaOrder = [...MIMAROPA_PROVINCES];
     const sorted = Array.from(normSet).sort((a, b) => {
       const idxA = mimaropaOrder.indexOf(a);
       const idxB = mimaropaOrder.indexOf(b);
@@ -207,7 +227,7 @@ const RcefAccredited = () => {
     const years = data
       .map(item => getYearFromDate(item.date_accredited))
       .filter(year => year !== null)
-      .sort((a, b) => b - a); // descending
+      .sort((a, b) => b - a);
     return [...new Set(years)];
   }, [data]);
 
@@ -219,6 +239,37 @@ const RcefAccredited = () => {
     return [...new Set(years)];
   }, [data]);
 
+  // ---------- Auto‑increment no for a given municipality ----------
+  const getNextSequenceNumber = async (province, municipality) => {
+    if (!province || !municipality) return '1';
+    try {
+      const q = query(
+        collection(db, 'rcef'),
+        where('province', '==', province),
+        where('municipality', '==', municipality),
+        orderBy('no', 'desc'),
+        limit(1)
+      );
+      const querySnapshot = await getDocs(q);
+      if (querySnapshot.empty) {
+        return '1';
+      }
+      const lastNo = querySnapshot.docs[0].data().no;
+      const lastNum = parseInt(lastNo, 10);
+      return isNaN(lastNum) ? '1' : (lastNum + 1).toString();
+    } catch (error) {
+      console.error('Error getting next sequence number:', error);
+      return '1';
+    }
+  };
+
+  // ---------- Find corresponding fullcso document by rcefId ----------
+  const findFullCsoByRcefId = async (rcefId) => {
+    const q = query(collection(db, 'fullcso-farmers'), where('rcefId', '==', rcefId), limit(1));
+    const snapshot = await getDocs(q);
+    return snapshot.empty ? null : { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+  };
+
   // ---------- Edit / Delete / Create Handlers ----------
   const handleEdit = (row) => {
     setSelectedApplication(row);
@@ -229,7 +280,15 @@ const RcefAccredited = () => {
   const handleDelete = async () => {
     if (!selectedApplication) return;
     try {
+      // Delete from rcef
       await deleteDoc(doc(db, 'rcef', selectedApplication.id));
+
+      // Delete corresponding fullcso document if exists
+      const fullCsoDoc = await findFullCsoByRcefId(selectedApplication.id);
+      if (fullCsoDoc) {
+        await deleteDoc(doc(db, 'fullcso-farmers', fullCsoDoc.id));
+      }
+
       setData(data.filter(item => item.id !== selectedApplication.id));
       setSuccess(`Application "${selectedApplication.name}" deleted successfully.`);
       setShowDeleteModal(false);
@@ -243,8 +302,18 @@ const RcefAccredited = () => {
 
   const handleUpdate = async () => {
     try {
-      const docRef = doc(db, 'rcef', selectedApplication.id);
-      await updateDoc(docRef, editForm);
+      const rcefRef = doc(db, 'rcef', selectedApplication.id);
+      await updateDoc(rcefRef, editForm);
+
+      // Update corresponding fullcso document
+      const fullCsoDoc = await findFullCsoByRcefId(selectedApplication.id);
+      if (fullCsoDoc) {
+        const fullCsoRef = doc(db, 'fullcso-farmers', fullCsoDoc.id);
+        // Copy all fields except id, rcefId, source (they remain unchanged)
+        const { id, rcefId, source, ...updateData } = editForm;
+        await updateDoc(fullCsoRef, updateData);
+      }
+
       setData(data.map(item => (item.id === selectedApplication.id ? { ...item, ...editForm } : item)));
       setSuccess('Application updated successfully!');
       setShowEditModal(false);
@@ -258,21 +327,49 @@ const RcefAccredited = () => {
 
   const handleCreate = async () => {
     try {
-      // Basic validation: require at least name
+      // Basic validation
       if (!createForm.name) {
         setError('Association name is required.');
         return;
       }
+      if (!createForm.province || !createForm.municipality) {
+        setError('Province and municipality are required.');
+        return;
+      }
 
-      const docRef = await addDoc(collection(db, 'rcef'), createForm);
-      const newRecord = { id: docRef.id, ...createForm };
-      setData([...data, newRecord]);
+      // Get next sequence number
+      const nextNo = await getNextSequenceNumber(createForm.province, createForm.municipality);
+
+      // Prepare new record
+      const newRecord = {
+        ...createForm,
+        no: nextNo,
+        // Ensure numeric fields are numbers
+        male_members: createForm.male_members ? Number(createForm.male_members) : 0,
+        female_members: createForm.female_members ? Number(createForm.female_members) : 0,
+        total_members: createForm.total_members ? Number(createForm.total_members) : 0,
+        area_covered: createForm.area_covered ? createForm.area_covered : '',
+      };
+
+      // Add to rcef collection
+      const rcefDocRef = await addDoc(collection(db, 'rcef'), newRecord);
+      const rcefId = rcefDocRef.id;
+
+      // Add to fullcso-farmers collection with source info
+      const fullCsoRecord = {
+        ...newRecord,
+        source: 'rcef',
+        rcefId: rcefId,
+      };
+      await addDoc(collection(db, 'fullcso-farmers'), fullCsoRecord);
+
+      // Update local state
+      setData([...data, { id: rcefId, ...newRecord }]);
       setSuccess(`Application "${createForm.name}" created successfully.`);
       setShowCreateModal(false);
       setCreateForm({
-        province: '',
+        province: MIMAROPA_PROVINCES[0],
         municipality: '',
-        no: '',
         name: '',
         date_accredited: '',
         date_expiration: '',
@@ -454,7 +551,7 @@ const RcefAccredited = () => {
     },
   ];
 
-  // ---------- Excel Export (dynamic, adapted from FullCsoFarmers) ----------
+  // ---------- Excel Export (unchanged) ----------
   const exportToExcel = async () => {
     try {
       const workbook = new ExcelJS.Workbook();
@@ -562,7 +659,7 @@ const RcefAccredited = () => {
       });
 
       const sortedProvinces = Object.keys(grouped).sort((a, b) => {
-        const order = ['Occidental Mindoro', 'Oriental Mindoro', 'Marinduque', 'Palawan', 'Romblon'];
+        const order = [...MIMAROPA_PROVINCES];
         const idxA = order.indexOf(a);
         const idxB = order.indexOf(b);
         if (idxA === -1 && idxB === -1) return a.localeCompare(b);
@@ -951,34 +1048,30 @@ const RcefAccredited = () => {
       >
         <form onSubmit={(e) => { e.preventDefault(); handleCreate(); }} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Province dropdown */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Province</label>
-              <input
-                type="text"
+              <label className="block text-sm font-medium text-gray-700 mb-1">Province *</label>
+              <select
                 name="province"
                 value={createForm.province}
                 onChange={handleCreateChange}
                 className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
+                required
+              >
+                {MIMAROPA_PROVINCES.map(prov => (
+                  <option key={prov} value={prov}>{prov}</option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Municipality</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Municipality *</label>
               <input
                 type="text"
                 name="municipality"
                 value={createForm.municipality}
                 onChange={handleCreateChange}
                 className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">No.</label>
-              <input
-                type="text"
-                name="no"
-                value={createForm.no}
-                onChange={handleCreateChange}
-                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                required
               />
             </div>
             <div>
@@ -995,7 +1088,7 @@ const RcefAccredited = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Date Accredited</label>
               <input
-                type="text"
+                type="date"
                 name="date_accredited"
                 value={createForm.date_accredited}
                 onChange={handleCreateChange}
@@ -1005,7 +1098,7 @@ const RcefAccredited = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Date Expiration</label>
               <input
-                type="text"
+                type="date"
                 name="date_expiration"
                 value={createForm.date_expiration}
                 onChange={handleCreateChange}
@@ -1015,7 +1108,7 @@ const RcefAccredited = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Date Application Received</label>
               <input
-                type="text"
+                type="date"
                 name="date_application_received"
                 value={createForm.date_application_received}
                 onChange={handleCreateChange}
@@ -1194,15 +1287,19 @@ const RcefAccredited = () => {
       >
         <form onSubmit={(e) => { e.preventDefault(); handleUpdate(); }} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Province dropdown in edit (still dropdown) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Province</label>
-              <input
-                type="text"
+              <select
                 name="province"
-                value={editForm.province || ''}
+                value={editForm.province || MIMAROPA_PROVINCES[0]}
                 onChange={handleEditChange}
                 className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
+              >
+                {MIMAROPA_PROVINCES.map(prov => (
+                  <option key={prov} value={prov}>{prov}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Municipality</label>
@@ -1210,16 +1307,6 @@ const RcefAccredited = () => {
                 type="text"
                 name="municipality"
                 value={editForm.municipality || ''}
-                onChange={handleEditChange}
-                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">No.</label>
-              <input
-                type="text"
-                name="no"
-                value={editForm.no || ''}
                 onChange={handleEditChange}
                 className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
@@ -1237,7 +1324,7 @@ const RcefAccredited = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Date Accredited</label>
               <input
-                type="text"
+                type="date"
                 name="date_accredited"
                 value={editForm.date_accredited || ''}
                 onChange={handleEditChange}
@@ -1247,7 +1334,7 @@ const RcefAccredited = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Date Expiration</label>
               <input
-                type="text"
+                type="date"
                 name="date_expiration"
                 value={editForm.date_expiration || ''}
                 onChange={handleEditChange}
@@ -1257,7 +1344,7 @@ const RcefAccredited = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Date Application Received</label>
               <input
-                type="text"
+                type="date"
                 name="date_application_received"
                 value={editForm.date_application_received || ''}
                 onChange={handleEditChange}
