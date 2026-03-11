@@ -388,8 +388,13 @@ const CsoOnProcess = () => {
     return booleanFields.every(field => docReqs[field] === true);
   };
 
-  // ========== Sync complete records to evaluation collection ==========
-  const syncCompleteToEvaluation = useCallback(async () => {
+  // ========== Determine if record should be moved to evaluation ==========
+  const shouldMoveToEvaluation = (record) => {
+    return record.for_deliberation === true || isDocumentComplete(record.documentary_requirements);
+  };
+
+  // ========== Sync complete/deliberation records to evaluation and delete from on-process ==========
+  const syncAndMoveToEvaluation = useCallback(async () => {
     try {
       // Get all CSO-on-Process records
       const csoCollection = collection(db, 'cso-on-process');
@@ -407,7 +412,7 @@ const CsoOnProcess = () => {
       });
 
       for (const record of csoRecords) {
-        if (isDocumentComplete(record.documentary_requirements)) {
+        if (shouldMoveToEvaluation(record)) {
           // If not already in evaluation, copy it
           if (!evalRecords.has(record.id)) {
             const evaluationData = {
@@ -419,6 +424,9 @@ const CsoOnProcess = () => {
             await addDoc(collection(db, 'cso-evaluation'), evaluationData);
             console.log(`Copied ${record.basic_information?.name_of_association} to evaluation.`);
           }
+          // Delete the original record from cso-on-process
+          await deleteDoc(doc(db, 'cso-on-process', record.id));
+          console.log(`Deleted ${record.basic_information?.name_of_association} from cso-on-process.`);
         }
       }
     } catch (err) {
@@ -444,11 +452,9 @@ const CsoOnProcess = () => {
 
       const total = data.length;
       const for_deliberation = data.filter(item => item.for_deliberation === true).length;
-
       const completed_documents = data.filter(item =>
         isDocumentComplete(item.documentary_requirements)
       ).length;
-
       const pending_review = data.filter(item => {
         const proc = item.process || {};
         return !(
@@ -461,15 +467,15 @@ const CsoOnProcess = () => {
 
       setStats({ total, for_deliberation, completed_documents, pending_review });
 
-      // After fetching, sync complete records to evaluation
-      await syncCompleteToEvaluation();
+      // After fetching, move eligible records to evaluation and delete from on-process
+      await syncAndMoveToEvaluation();
     } catch (err) {
       console.error('Error fetching CSO data:', err);
       setError('Failed to load data. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, [syncCompleteToEvaluation]);
+  }, [syncAndMoveToEvaluation]);
 
   useEffect(() => {
     fetchCSOData();
@@ -539,7 +545,7 @@ const CsoOnProcess = () => {
       setFormData(initialFormState);
       setEditingId(null);
       setShowAddModal(false);
-      await fetchCSOData(); // includes sync to evaluation
+      await fetchCSOData(); // includes sync and delete
 
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
@@ -1055,7 +1061,7 @@ const CsoOnProcess = () => {
             setImportProgress(0);
             setShowImportModal(false);
             setSuccess(`${imported} records imported successfully!`);
-            fetchCSOData(); // includes sync to evaluation
+            fetchCSOData(); // includes sync and delete
             setTimeout(() => setSuccess(''), 3000);
           }, 500);
 
