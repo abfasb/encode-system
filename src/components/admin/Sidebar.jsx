@@ -207,7 +207,6 @@ export default function Sidebar({
           ))}
         </nav>
 
-        {/* FOOTER */}
         {sidebarOpen && (
           <div className={`mt-auto p-5 border-t ${theme.border} text-center`}>
             <p className={`text-xs font-semibold ${theme.text} tracking-wider`}>
