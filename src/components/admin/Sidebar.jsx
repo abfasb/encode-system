@@ -157,7 +157,6 @@ export default function Sidebar({
           </button>
         </div>
 
-        {/* NAVIGATION */}
         <nav className="flex-1 mt-8 px-3 space-y-1.5 overflow-y-auto">
           {links.map((link) => (
             <NavLink

@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { doc, updateDoc, arrayUnion, getDoc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db } from "../config/firebase";
-import { storage } from "../config/cloudStorage";
 import SHA256 from "crypto-js/sha256"; // Install: npm install crypto-js
 
 const avatarThemes = [
@@ -39,15 +37,11 @@ export default function ChooseCharacter() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
-  const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [selectedCharId, setSelectedCharId] = useState(null);
   const [hoveredCharId, setHoveredCharId] = useState(null);
   const [error, setError] = useState("");
-  const [uploadWarning, setUploadWarning] = useState("");
 
   // Password modal states
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -106,15 +100,6 @@ export default function ChooseCharacter() {
     return () => unsub();
   }, []);
 
-  // Cleanup preview URL
-  useEffect(() => {
-    return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-    };
-  }, [previewUrl]);
-
   const handleCharacterClick = (char) => {
     setSelectedCharacter(char);
     setShowPasswordModal(true);
@@ -126,7 +111,6 @@ export default function ChooseCharacter() {
   const verifyPassword = () => {
     if (!selectedCharacter) return;
 
-    // If character has no password (old data), maybe allow? But we'll require password.
     if (!selectedCharacter.passwordHash) {
       setPasswordError("This account has no password set. Please contact admin.");
       return;
@@ -134,7 +118,6 @@ export default function ChooseCharacter() {
 
     const hashedInput = SHA256(passwordInput).toString();
     if (hashedInput === selectedCharacter.passwordHash) {
-      // Correct password
       localStorage.setItem("activeCharacter", JSON.stringify(selectedCharacter));
       setSelectedCharId(selectedCharacter.id);
       setShowPasswordModal(false);
@@ -146,42 +129,7 @@ export default function ChooseCharacter() {
     }
   };
 
-  // Handle file selection
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert("File too large. Max size is 5MB.");
-        e.target.value = null;
-        return;
-      }
-      if (!file.type.startsWith("image/")) {
-        alert("Please select an image file.");
-        e.target.value = null;
-        return;
-      }
-      setSelectedFile(file);
-      setPreviewUrl(URL.createObjectURL(file));
-      setUploadWarning("");
-    } else {
-      setSelectedFile(null);
-      setPreviewUrl(null);
-    }
-  };
-
-  // Upload avatar to Firebase Storage
-  const uploadAvatar = async (file, characterId) => {
-    const storageRef = ref(storage, `avatars/${characterId}_${Date.now()}`);
-    const metadata = {
-      contentType: file.type,
-      cacheControl: "public,max-age=31536000",
-    };
-    await uploadBytes(storageRef, file, metadata);
-    const downloadUrl = await getDownloadURL(storageRef);
-    return downloadUrl;
-  };
-
-  // Add new character
+  // Add new character (no avatar upload)
   const addCharacter = async () => {
     const trimmedName = newName.trim();
     if (!trimmedName) {
@@ -201,22 +149,18 @@ export default function ChooseCharacter() {
       return;
     }
 
-    // Admin password check for Admin role
-    if (newRole === "Admin" && adminPassword !== "DAMIMAROPA") {
+    if (newRole === "Admin" && adminPassword !== "DAMIMAROPA@IDU") {
       alert("Incorrect admin password!");
       return;
     }
 
-    // Check duplicate name (case‑insensitive)
     if (characters.some((c) => c.name.toLowerCase() === trimmedName.toLowerCase())) {
       alert("Character with this name already exists!");
       return;
     }
 
     setAdding(true);
-    setUploading(!!selectedFile);
     setError("");
-    setUploadWarning("");
 
     // Hash the password
     const passwordHash = SHA256(newPassword).toString();
@@ -225,21 +169,10 @@ export default function ChooseCharacter() {
       id: `char_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: trimmedName,
       role: newRole,
-      passwordHash, // store hash, not plaintext
+      passwordHash,
       createdAt: new Date().toISOString(),
+      // No photoURL field
     };
-
-    // Attempt avatar upload (non‑blocking)
-    if (selectedFile) {
-      try {
-        const photoURL = await uploadAvatar(selectedFile, newCharacter.id);
-        newCharacter.photoURL = photoURL;
-        console.log("Avatar uploaded successfully");
-      } catch (uploadError) {
-        console.error("Avatar upload failed (non‑blocking):", uploadError);
-        setUploadWarning("Avatar could not be uploaded. You can update it later.");
-      }
-    }
 
     const userDocRef = doc(db, "users", "mimaropa.ids");
 
@@ -266,7 +199,6 @@ export default function ChooseCharacter() {
         console.error("Failed to create document:", innerError);
         setError("Failed to add character. Please try again.");
         setAdding(false);
-        setUploading(false);
         return;
       }
     }
@@ -277,10 +209,7 @@ export default function ChooseCharacter() {
     setNewPassword("");
     setConfirmPassword("");
     setAdminPassword("");
-    setSelectedFile(null);
-    setPreviewUrl(null);
     setAdding(false);
-    setUploading(false);
   };
 
   // Helper functions for avatar theme and role icon (unchanged)
@@ -304,7 +233,7 @@ export default function ChooseCharacter() {
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === "Enter" && newName && newRole && newPassword && newPassword === confirmPassword && !adding && !uploading) {
+    if (e.key === "Enter" && newName && newRole && newPassword && newPassword === confirmPassword && !adding) {
       addCharacter();
     }
   };
@@ -338,15 +267,10 @@ export default function ChooseCharacter() {
             </div>
           </div>
 
-          {/* Error & warning messages */}
+          {/* Error message */}
           {error && (
             <div className="mb-6 bg-red-500/20 border border-red-500/50 rounded-lg p-4 text-white text-center backdrop-blur-sm">
               {error}
-            </div>
-          )}
-          {uploadWarning && (
-            <div className="mb-6 bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-4 text-white text-center backdrop-blur-sm">
-              ⚠️ {uploadWarning}
             </div>
           )}
 
@@ -388,23 +312,15 @@ export default function ChooseCharacter() {
 
                       {/* Avatar */}
                       <div className="relative mb-4">
-                        {char.photoURL ? (
-                          <img
-                            src={char.photoURL}
-                            alt={char.name}
-                            className="w-24 h-24 mx-auto rounded-full object-cover border-4 border-white/30 shadow-xl transform group-hover:rotate-6 transition-transform duration-300"
-                          />
-                        ) : (
-                          <div
-                            className={`w-24 h-24 mx-auto rounded-full bg-gradient-to-br ${theme.gradient} p-1 shadow-xl transform group-hover:rotate-6 transition-transform duration-300`}
-                          >
-                            <div className="w-full h-full rounded-full bg-gray-900/60 backdrop-blur-sm flex items-center justify-center border-2 border-white/30">
-                              <span className="text-4xl filter drop-shadow-lg">
-                                {theme.icon}
-                              </span>
-                            </div>
+                        <div
+                          className={`w-24 h-24 mx-auto rounded-full bg-gradient-to-br ${theme.gradient} p-1 shadow-xl transform group-hover:rotate-6 transition-transform duration-300`}
+                        >
+                          <div className="w-full h-full rounded-full bg-gray-900/60 backdrop-blur-sm flex items-center justify-center border-2 border-white/30">
+                            <span className="text-4xl filter drop-shadow-lg">
+                              {theme.icon}
+                            </span>
                           </div>
-                        )}
+                        </div>
                         {/* Role badge */}
                         <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-green-600 text-white text-xs px-3 py-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">
                           {char.role}
@@ -520,35 +436,12 @@ export default function ChooseCharacter() {
                         />
                       )}
 
-                      <div className="flex items-center space-x-3">
-                        <label className="flex-1 cursor-pointer">
-                          <span className="block w-full bg-white/10 hover:bg-white/20 text-white text-center rounded-lg px-4 py-2 border border-white/20 transition">
-                            {selectedFile ? "Change Avatar" : "Upload Avatar (optional)"}
-                          </span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleFileChange}
-                            className="hidden"
-                          />
-                        </label>
-                        {previewUrl && (
-                          <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-green-400">
-                            <img
-                              src={previewUrl}
-                              alt="Preview"
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        )}
-                      </div>
-
                       <div className="flex gap-2">
                         <button
                           onClick={addCharacter}
                           className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {uploading ? "Uploading..." : "Add"}
+                          Add
                         </button>
                         <button
                           onClick={() => {
@@ -558,9 +451,6 @@ export default function ChooseCharacter() {
                             setNewPassword("");
                             setConfirmPassword("");
                             setAdminPassword("");
-                            setSelectedFile(null);
-                            setPreviewUrl(null);
-                            setUploadWarning("");
                           }}
                           className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-colors"
                         >
@@ -609,23 +499,15 @@ export default function ChooseCharacter() {
               {/* Avatar preview */}
               <div className="flex flex-col items-center mb-6">
                 <div className="relative mb-4">
-                  {selectedCharacter.photoURL ? (
-                    <img
-                      src={selectedCharacter.photoURL}
-                      alt={selectedCharacter.name}
-                      className="w-24 h-24 rounded-full object-cover border-4 border-green-400/50 shadow-xl"
-                    />
-                  ) : (
-                    <div
-                      className={`w-24 h-24 rounded-full bg-gradient-to-br ${getAvatarTheme(selectedCharacter.name).gradient} p-1 shadow-xl`}
-                    >
-                      <div className="w-full h-full rounded-full bg-gray-900/60 backdrop-blur-sm flex items-center justify-center border-2 border-white/30">
-                        <span className="text-4xl filter drop-shadow-lg">
-                          {getAvatarTheme(selectedCharacter.name).icon}
-                        </span>
-                      </div>
+                  <div
+                    className={`w-24 h-24 rounded-full bg-gradient-to-br ${getAvatarTheme(selectedCharacter.name).gradient} p-1 shadow-xl`}
+                  >
+                    <div className="w-full h-full rounded-full bg-gray-900/60 backdrop-blur-sm flex items-center justify-center border-2 border-white/30">
+                      <span className="text-4xl filter drop-shadow-lg">
+                        {getAvatarTheme(selectedCharacter.name).icon}
+                      </span>
                     </div>
-                  )}
+                  </div>
                   <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-green-600 text-white text-xs px-3 py-1 rounded-full shadow-lg whitespace-nowrap">
                     {selectedCharacter.role}
                   </div>

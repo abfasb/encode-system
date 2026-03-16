@@ -39,7 +39,7 @@ const resetPassword = async () => {
 };
 
   const handleLogin = () => {
-    navigate('/login')
+    navigate('/choose-character')
   }
  
   const features = [
@@ -159,7 +159,7 @@ const resetPassword = async () => {
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4">
-                <button onClick={resetPassword} className="group bg-gradient-to-r from-green-600 to-emerald-600 text-white px-8 py-4 rounded-xl font-semibold text-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 flex items-center justify-center">
+                <button onClick={handleLogin} className="group bg-gradient-to-r from-green-600 to-emerald-600 text-white px-8 py-4 rounded-xl font-semibold text-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 flex items-center justify-center">
                   Start Encoding Now
                   <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </button>
