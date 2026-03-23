@@ -10,6 +10,7 @@ import {
   FiChevronRight
 } from "react-icons/fi";
 import { useState, useEffect } from "react";
+import { Handshake } from "lucide-react";
 import Logo from "../../assets/DA.png";
 
 /**
@@ -29,7 +30,7 @@ import Logo from "../../assets/DA.png";
 export default function Sidebar({
   links = [
     { name: "Dashboard", icon: <FiHome />, key: "dashboard" },
-    { name: "Full Farmers Coop & Associations", icon: <FiUser />, key: "full-farmers" },
+    { name: "Full Farmers Coop & Associations", icon: <Handshake />, key: "full-farmers" },
     { name: "Audit Logs", icon: <FiUser />, key: "audit" },
     { name: "CSOs", icon: <FiBook />, key: "cso" },
     { name: "Upload CSOs", icon: <FiCloud />, key: "upload-cso" },
@@ -117,7 +118,6 @@ export default function Sidebar({
         `}
         aria-label="Sidebar navigation"
       >
-        {/* HEADER */}
         <div
           className={`
             flex items-center px-4 h-20
