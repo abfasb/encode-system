@@ -1142,12 +1142,11 @@ export default function FullCoopAssociations() {
 
   return (
     <div className="p-4 md:p-6 bg-gradient-to-br from-gray-50 to-gray-100 flex-1 overflow-auto min-h-screen">
-      {/* Header Section */}
       <div className="mb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-green-800 to-green-600 bg-clip-text text-transparent mb-2">
-              Full Cooperative Associations
+              Farmers Cooperative & Associations (FCAs)
             </h1>
             <p className="text-gray-600">Complete list of all agricultural associations with advanced filtering</p>
           </div>

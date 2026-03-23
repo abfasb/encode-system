@@ -112,9 +112,11 @@ export default function Dashboard() {
     const activeAssociations = data.filter((item) => item.status === "Active").length;
     const provincesCount = new Set(data.map((item) => item.province)).size;
     const municipalitiesCount = new Set(data.map((item) => item.municipality)).size;
-    const pwdAssociations = data.filter(
-      (item) => item.groupCategories?.personsWithDisabilitiesGroup === true
-    ).length;
+    // Total differently-abled members (PWD)
+    const totalDifferentlyAbled = data.reduce(
+      (sum, item) => sum + (parseInt(item.members?.differently_abled) || 0),
+      0
+    );
     const youngFarmersTotal = data.reduce(
       (sum, item) => sum + (parseInt(item.members?.young_farmer) || 0),
       0
@@ -133,24 +135,22 @@ export default function Dashboard() {
       activeAssociations,
       provincesCount,
       municipalitiesCount,
-      pwdAssociations,
+      totalDifferentlyAbled, // renamed to reflect actual meaning
       youngFarmersTotal,
       ipsTotal,
       seniorCitizensTotal,
     };
   }, [data]);
 
-  // Group category counts for bar chart
+  // Group category counts for bar chart (still based on association counts)
   const groupCategoryCounts = useMemo(() => {
     const counts = {
       "Women-Led": data.filter((item) => item.groupCategories?.womenLed).length,
       "Men-Led": data.filter((item) => item.groupCategories?.menLed).length,
       "Senior Citizens": data.filter((item) => item.groupCategories?.seniorCitizensGroup).length,
-      PWD: data.filter((item) => item.groupCategories?.personsWithDisabilitiesGroup).length,
-      "Young Farmers": data.filter((item) => item.groupCategories?.youngFarmersOrganization)
-        .length,
-      "IP Association": data.filter((item) => item.groupCategories?.indigenousPeoplesAssociation)
-        .length,
+      "PWD": data.filter((item) => item.groupCategories?.personsWithDisabilitiesGroup).length,
+      "Young Farmers": data.filter((item) => item.groupCategories?.youngFarmersOrganization).length,
+      "IP Association": data.filter((item) => item.groupCategories?.indigenousPeoplesAssociation).length,
     };
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
   }, [data]);
@@ -267,12 +267,13 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* PWD Card - now shows total differently-abled members */}
         <div className="bg-gradient-to-br from-white to-purple-50 p-5 rounded-2xl shadow-lg border border-purple-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-gray-600 mb-1">PWD Groups</p>
+              <p className="text-xs font-medium text-gray-600 mb-1">PWD Members</p>
               <h3 className="text-2xl font-bold text-gray-800">
-                {analytics?.pwdAssociations || 0}
+                {analytics?.totalDifferentlyAbled?.toLocaleString() || 0}
               </h3>
             </div>
             <div className="bg-purple-100 p-3 rounded-xl">
