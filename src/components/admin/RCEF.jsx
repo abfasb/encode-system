@@ -21,7 +21,6 @@ export default function RCEF() {
         </p>
       </div>
 
-      {/* TAB NAVIGATION */}
       <div className="relative bg-white rounded-2xl shadow-sm border border-gray-100 p-2 flex overflow-x-auto hide-scrollbar sm:w-fit">
         {tabs.map((tab) => (
           <button

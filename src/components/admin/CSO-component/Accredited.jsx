@@ -466,14 +466,12 @@ const Accredited = () => {
     withCertificates: 0
   });
 
-  // ---------- Sync to fullcso-farmers collection ----------
   const syncToCsoFarmers = async (csoId, csoData) => {
     if (!csoId) return;
     const farmersData = mapCsoToFarmers(csoData);
     await setDoc(doc(db, 'fullcso-farmers', csoId), farmersData, { merge: true });
   };
 
-  // ---------- Remove from fullcso-farmers (by same document ID) ----------
   const removeFromCsoFarmers = async (csoId) => {
     if (!csoId) return;
     try {
@@ -483,7 +481,6 @@ const Accredited = () => {
     }
   };
 
-  // ---------- Move a single expired record to cso-expired ----------
   const moveExpiredRecord = async (docId, recordData) => {
     try {
       await setDoc(doc(db, 'cso-expired', docId), {
@@ -499,7 +496,6 @@ const Accredited = () => {
     }
   };
 
-  // ---------- Check all records and move expired ones ----------
   const checkAndMoveExpiredRecords = useCallback(async (records) => {
     let movedCount = 0;
     for (const record of records) {
@@ -515,7 +511,6 @@ const Accredited = () => {
     return movedCount;
   }, []);
 
-  // ---------- Fetch data and automatically archive expired records ----------
   const fetchCSOData = useCallback(async () => {
     try {
       setLoading(true);
