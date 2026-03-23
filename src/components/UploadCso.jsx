@@ -31,10 +31,13 @@ import {
   FiHome,
   FiCheckSquare,
   FiSquare,
+  FiHardDrive,
 } from "react-icons/fi";
 
+const STORAGE_LIMIT_BYTES = 5 * 1024 * 1024 * 1024; // 5 GB
+
 const UploadCso = () => {
-  const [currentPath, setCurrentPath] = useState(""); 
+  const [currentPath, setCurrentPath] = useState("");
   const [pathSegments, setPathSegments] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,21 +46,49 @@ const UploadCso = () => {
   const [newFolderName, setNewFolderName] = useState("");
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
-  
-  // ============== NEW: Multi‑select state ==============
-  const [selectedItems, setSelectedItems] = useState([]); // array of item ids
 
-  // ==================== HELPER: Robust File Delete ====================
-  /**
-   * Deletes a file from Firebase Storage. If the file doesn't exist (404),
-   * it's treated as success so the UI doesn't break.
-   * @param {string} storagePath - The full path in Storage (e.g., 'csoUploads/folder/file.pdf')
-   * @returns {Promise<{success: boolean, message: string}>}
-   */
+  // Multi‑select state
+  const [selectedItems, setSelectedItems] = useState([]);
+
+  // Storage stats
+  const [totalUsedBytes, setTotalUsedBytes] = useState(0);
+  const [loadingStorage, setLoadingStorage] = useState(true);
+
+  // -------------------- Storage stats --------------------
+  const fetchTotalUsedBytes = useCallback(async () => {
+    setLoadingStorage(true);
+    try {
+      const filesQuery = query(
+        collection(db, "csoUploads"),
+        where("type", "==", "file")
+      );
+      const snapshot = await getDocs(filesQuery);
+      const total = snapshot.docs.reduce((sum, doc) => {
+        const size = doc.data().size || 0;
+        return sum + size;
+      }, 0);
+      setTotalUsedBytes(total);
+    } catch (error) {
+      console.error("Error fetching storage usage:", error);
+    } finally {
+      setLoadingStorage(false);
+    }
+  }, []);
+
+  // Update stats after any change that affects file sizes
+  const refreshStorageStats = useCallback(() => {
+    fetchTotalUsedBytes();
+  }, [fetchTotalUsedBytes]);
+
+  useEffect(() => {
+    fetchTotalUsedBytes();
+  }, [fetchTotalUsedBytes]);
+
+  // -------------------- Helper: Delete file from Storage --------------------
   const deleteFile = async (storagePath) => {
-    if (!storagePath || typeof storagePath !== 'string') {
-      console.warn('deleteFile called with invalid path:', storagePath);
-      return { success: false, message: 'Invalid file path' };
+    if (!storagePath || typeof storagePath !== "string") {
+      console.warn("deleteFile called with invalid path:", storagePath);
+      return { success: false, message: "Invalid file path" };
     }
 
     const fileRef = ref(storage, storagePath);
@@ -65,27 +96,26 @@ const UploadCso = () => {
     try {
       await deleteObject(fileRef);
       console.log(`✅ File deleted: ${storagePath}`);
-      return { success: true, message: 'File deleted' };
+      return { success: true, message: "File deleted" };
     } catch (error) {
       switch (error.code) {
-        case 'storage/object-not-found':
+        case "storage/object-not-found":
           console.log(`⚠️ File not found, assuming already deleted: ${storagePath}`);
-          return { success: true, message: 'File already deleted' };
-        case 'storage/unauthorized':
+          return { success: true, message: "File already deleted" };
+        case "storage/unauthorized":
           console.error(`🚫 Permission denied for: ${storagePath}`, error);
-          return { success: false, message: 'Permission denied' };
-        case 'storage/canceled':
-          console.log('⏹️ Delete canceled');
-          return { success: false, message: 'Canceled' };
+          return { success: false, message: "Permission denied" };
+        case "storage/canceled":
+          console.log("⏹️ Delete canceled");
+          return { success: false, message: "Canceled" };
         default:
           console.error(`❌ Unexpected error deleting ${storagePath}:`, error);
-          return { success: false, message: error.message || 'Unknown error' };
+          return { success: false, message: error.message || "Unknown error" };
       }
     }
   };
-  // =====================================================================
 
-  // Fetch items for the current path
+  // -------------------- Fetch items for current path --------------------
   const fetchItems = useCallback(async () => {
     setLoading(true);
     try {
@@ -101,7 +131,6 @@ const UploadCso = () => {
         ...doc.data(),
       }));
       setItems(fetched);
-      // Clear selection when folder changes
       setSelectedItems([]);
     } catch (error) {
       if (
@@ -140,13 +169,12 @@ const UploadCso = () => {
     }
   }, [currentPath]);
 
-  // Update path segments and fetch items on path change
   useEffect(() => {
     fetchItems();
     setPathSegments(currentPath ? currentPath.split("/") : []);
   }, [currentPath, fetchItems]);
 
-  // Create a new folder
+  // -------------------- Create folder --------------------
   const createFolder = async () => {
     if (!newFolderName.trim()) {
       alert("Folder name cannot be empty");
@@ -184,10 +212,21 @@ const UploadCso = () => {
     }
   };
 
-  // Upload a file
+  // -------------------- Upload file --------------------
   const uploadFile = async () => {
     if (!selectedFile) {
       alert("Please select a file");
+      return;
+    }
+
+    // Check storage limit
+    const remainingBytes = STORAGE_LIMIT_BYTES - totalUsedBytes;
+    if (selectedFile.size > remainingBytes) {
+      alert(
+        `Not enough storage space. Available: ${formatFileSize(
+          remainingBytes
+        )}, Required: ${formatFileSize(selectedFile.size)}`
+      );
       return;
     }
 
@@ -219,6 +258,7 @@ const UploadCso = () => {
       setSelectedFile(null);
       document.getElementById("file-upload").value = "";
       fetchItems();
+      refreshStorageStats(); // update total used space
     } catch (error) {
       console.error("Upload error:", error);
       alert("Upload failed");
@@ -227,7 +267,7 @@ const UploadCso = () => {
     }
   };
 
-  // Recursively delete a folder and its contents (using robust deleteFile)
+  // -------------------- Recursive folder delete --------------------
   const deleteFolderRecursive = async (folderPath) => {
     const q = query(
       collection(db, "csoUploads"),
@@ -245,7 +285,7 @@ const UploadCso = () => {
     }
   };
 
-  // Delete an item (file or folder) – using deleteFile for files
+  // -------------------- Delete single item --------------------
   const deleteItem = async (item) => {
     if (!window.confirm(`Are you sure you want to delete "${item.name}"?`)) {
       return;
@@ -270,17 +310,18 @@ const UploadCso = () => {
         }
       }
       fetchItems();
+      refreshStorageStats();
     } catch (error) {
       console.error("Delete error:", error);
       alert("Delete failed");
     }
   };
 
-  // ============== NEW: Selection functions ==============
+  // -------------------- Selection functions --------------------
   const toggleSelectItem = (itemId) => {
-    setSelectedItems(prev =>
+    setSelectedItems((prev) =>
       prev.includes(itemId)
-        ? prev.filter(id => id !== itemId)
+        ? prev.filter((id) => id !== itemId)
         : [...prev, itemId]
     );
   };
@@ -289,20 +330,18 @@ const UploadCso = () => {
     if (selectedItems.length === items.length) {
       setSelectedItems([]);
     } else {
-      setSelectedItems(items.map(item => item.id));
+      setSelectedItems(items.map((item) => item.id));
     }
   };
 
   // Delete all selected items
   const deleteSelected = async () => {
     if (selectedItems.length === 0) return;
-    const confirmMsg = `Delete ${selectedItems.length} selected item(s)?`;
-    if (!window.confirm(confirmMsg)) return;
+    if (!window.confirm(`Delete ${selectedItems.length} selected item(s)?`))
+      return;
 
-    // Show some visual feedback (optional)
-    // We'll just loop through and delete each
     for (const itemId of selectedItems) {
-      const item = items.find(i => i.id === itemId);
+      const item = items.find((i) => i.id === itemId);
       if (!item) continue;
 
       try {
@@ -311,31 +350,26 @@ const UploadCso = () => {
           if (storageResult.success) {
             await deleteDoc(doc(db, "csoUploads", item.id));
           } else {
-            console.warn(`Skipping Firestore delete for ${item.name} due to storage error:`, storageResult.message);
+            console.warn(
+              `Skipping Firestore delete for ${item.name} due to storage error:`,
+              storageResult.message
+            );
           }
         } else {
-          // Folder: recursive delete
           await deleteFolderRecursive(item.path);
           await deleteDoc(doc(db, "csoUploads", item.id));
-
-          // If we deleted the current folder, we will navigate, but we can't easily
-          // handle multiple folders here. Instead, we'll just let the loop continue;
-          // after the first folder deletion, subsequent items might have been already
-          // removed by the recursive call, but our deleteFile handles missing files.
-          // It's safe but may produce warnings. We can live with that.
         }
       } catch (error) {
         console.error(`Error deleting ${item.name}:`, error);
       }
     }
 
-    // Clear selection and refresh
     setSelectedItems([]);
     fetchItems();
+    refreshStorageStats();
   };
-  // ======================================================
 
-  // Recursively update paths of descendants after rename
+  // -------------------- Rename helpers --------------------
   const updateDescendantPaths = async (oldBasePath, newBasePath) => {
     const q = query(
       collection(db, "csoUploads"),
@@ -369,7 +403,6 @@ const UploadCso = () => {
     }
   };
 
-  // Rename an item
   const renameItem = async (item) => {
     const newName = window.prompt("Enter new name:", item.name);
     if (!newName || newName === item.name) return;
@@ -418,20 +451,21 @@ const UploadCso = () => {
         }
       }
       fetchItems();
+      // Rename doesn't affect used space, so no need to refresh stats
     } catch (error) {
       console.error("Rename error:", error);
       alert("Rename failed");
     }
   };
 
-  // Navigation
+  // -------------------- Navigation --------------------
   const navigateToFolder = (folderPath) => setCurrentPath(folderPath);
   const navigateBreadcrumb = (index) => {
     const path = pathSegments.slice(0, index + 1).join("/");
     setCurrentPath(path);
   };
 
-  // Download a file
+  // -------------------- File utilities --------------------
   const downloadFile = (url, fileName) => {
     const a = document.createElement("a");
     a.href = url;
@@ -439,7 +473,6 @@ const UploadCso = () => {
     a.click();
   };
 
-  // Preview a file (open image/pdf in new tab, download others)
   const renderPreview = (item) => {
     if (item.type !== "file") return;
     if (
@@ -452,7 +485,6 @@ const UploadCso = () => {
     }
   };
 
-  // Format file size
   const formatFileSize = (bytes) => {
     if (bytes === 0) return "0 Bytes";
     const k = 1024;
@@ -461,33 +493,63 @@ const UploadCso = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   };
 
-  // Get appropriate icon for file type
   const getFileIcon = (fileType) => {
-    if (fileType?.startsWith("image/")) return <FiImage className="text-lime-400" />;
-    if (fileType?.startsWith("video/")) return <FiFilm className="text-emerald-400" />;
-    if (fileType === "application/pdf") return <FiFile className="text-amber-400" />;
+    if (fileType?.startsWith("image/"))
+      return <FiImage className="text-lime-400" />;
+    if (fileType?.startsWith("video/"))
+      return <FiFilm className="text-emerald-400" />;
+    if (fileType === "application/pdf")
+      return <FiFile className="text-amber-400" />;
     return <FiFile className="text-gray-400" />;
   };
+
+  // Progress percentage
+  const usagePercent = (totalUsedBytes / STORAGE_LIMIT_BYTES) * 100;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-900 via-green-700 to-green-500 p-6">
       <div className="max-w-7xl mx-auto bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden">
-        
         {/* Header */}
         <div className="px-8 py-6 border-b border-white/10 bg-black/20">
-          <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <FiFolder className="text-lime-300" />
-            Department of Agriculture – Cloud Drive
-          </h1>
-          <p className="text-lime-200/70 mt-1">
-            Secure file storage for the DA Encoding
-          </p>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-white flex items-center gap-3">
+                <FiFolder className="text-lime-300" />
+                Department of Agriculture – Cloud Drive
+              </h1>
+              <p className="text-lime-200/70 mt-1">
+                Secure file storage for the DA Encoding
+              </p>
+            </div>
+
+            {/* Storage Usage Card */}
+            <div className="bg-white/5 backdrop-blur-sm rounded-xl p-3 w-full md:w-64">
+              <div className="flex items-center gap-2 text-white/80 mb-1">
+                <FiHardDrive />
+                <span className="text-sm font-medium">Storage Usage</span>
+              </div>
+              <div className="text-white text-sm">
+                {formatFileSize(totalUsedBytes)} / {formatFileSize(STORAGE_LIMIT_BYTES)}
+              </div>
+              <div className="w-full bg-white/20 rounded-full h-2 mt-1">
+                <div
+                  className="bg-lime-400 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${Math.min(usagePercent, 100)}%` }}
+                ></div>
+              </div>
+              {usagePercent > 90 && (
+                <p className="text-red-300 text-xs mt-1">
+                  ⚠️ Almost full!
+                </p>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Toolbar */}
         <div className="px-8 py-4 flex flex-wrap items-center justify-between gap-4 bg-black/30">
           {/* Breadcrumb */}
-          <div className="flex items-center text-sm text-white/80 bg-white/5 px-4 py-2 rounded-full">
+          <div className="flex items-center text-sm text-white/80 bg-white/5 px-4 py-2 rounded-full overflow-x-auto">
             <button
               onClick={() => setCurrentPath("")}
               className="hover:text-white transition-colors flex items-center gap-1"
@@ -496,10 +558,10 @@ const UploadCso = () => {
             </button>
             {pathSegments.map((seg, idx) => (
               <React.Fragment key={idx}>
-                <FiChevronRight className="mx-1 text-white/40" />
+                <FiChevronRight className="mx-1 text-white/40 flex-shrink-0" />
                 <button
                   onClick={() => navigateBreadcrumb(idx)}
-                  className="hover:text-white transition-colors"
+                  className="hover:text-white transition-colors whitespace-nowrap"
                 >
                   {seg}
                 </button>
@@ -564,7 +626,7 @@ const UploadCso = () => {
                 onClick={toggleSelectAll}
                 className="text-white/80 hover:text-white text-sm underline"
               >
-                {selectedItems.length === items.length ? 'Deselect all' : 'Select all'}
+                {selectedItems.length === items.length ? "Deselect all" : "Select all"}
               </button>
             </div>
             <button
@@ -657,12 +719,18 @@ const UploadCso = () => {
                     ${viewMode === "grid" ? "p-5 flex flex-col items-center text-center" : "p-4 flex items-center gap-4"}
                   `}
                 >
-                  {/* Selection Checkbox – always visible, positioned appropriately */}
+                  {/* Selection Checkbox - visible only on hover or when selected */}
                   <div
                     className={`
+                      transition-opacity duration-200
                       ${viewMode === "grid" 
                         ? "absolute top-2 left-2 z-10" 
                         : "flex-shrink-0"}
+                      ${
+                        selectedItems.includes(item.id)
+                          ? "opacity-100"
+                          : "opacity-0 group-hover:opacity-100"
+                      }
                     `}
                   >
                     <button

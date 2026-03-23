@@ -36,6 +36,10 @@ import {
   FiEdit,
   FiTrash,
   FiDatabase,
+  FiUsers as FiMembers,
+  FiTag,
+  FiBook,
+  FiBriefcase,
 } from "react-icons/fi";
 import { collection, getDocs, doc, setDoc, updateDoc, addDoc } from "firebase/firestore";
 import { db } from "../../config/firebase";
@@ -65,16 +69,32 @@ const MemoizedTableRow = React.memo(({
   index,
   openEditModal,
   openDeleteModal,
+  openViewModal,
   isDifferentlyAbledEmpty,
   isRegistrationEmpty
 }) => {
-  const handleEditClick = useCallback(() => openEditModal(item), [openEditModal, item]);
-  const handleDeleteClick = useCallback(() => openDeleteModal(item), [openDeleteModal, item]);
+  const handleEditClick = useCallback((e) => {
+    e.stopPropagation();
+    openEditModal(item);
+  }, [openEditModal, item]);
+
+  const handleDeleteClick = useCallback((e) => {
+    e.stopPropagation();
+    openDeleteModal(item);
+  }, [openDeleteModal, item]);
+
+  const handleViewClick = useCallback((e) => {
+    e.stopPropagation();
+    openViewModal(item);
+  }, [openViewModal, item]);
 
   const renderCheck = (value) => value ? "✓" : "";
 
   return (
-    <tr className="hover:bg-gradient-to-r hover:from-green-50 hover:to-emerald-50 transition-all duration-200">
+    <tr
+      onClick={() => openViewModal(item)}
+      className="hover:bg-gradient-to-r hover:from-green-50 hover:to-emerald-50 transition-all duration-200 cursor-pointer"
+    >
       <td className="px-4 py-3 whitespace-nowrap text-center text-sm font-bold text-gray-900 border-r border-gray-200">
         {index}
       </td>
@@ -174,6 +194,9 @@ const MemoizedTableRow = React.memo(({
       </td>
       <td className="px-4 py-3 whitespace-nowrap text-center">
         <div className="flex items-center justify-center space-x-2">
+          <button onClick={handleViewClick} className="p-2 text-gray-600 hover:bg-gray-100 rounded-xl transition-all duration-200 hover:scale-105" title="View Details">
+            <FiEye className="w-4.5 h-4.5" />
+          </button>
           <button onClick={handleEditClick} className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all duration-200 hover:scale-105" title="Edit Association">
             <FiEdit2 className="w-4.5 h-4.5" />
           </button>
@@ -260,7 +283,6 @@ export default function FullCoopAssociations() {
     registrationType: "",
     commodity: "",
     searchTerm: "",
-    // Group category filters
     womenLed: false,
     menLed: false,
     seniorCitizensGroup: false,
@@ -276,7 +298,9 @@ export default function FullCoopAssociations() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isMunicipalityModalOpen, setIsMunicipalityModalOpen] = useState(false);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedAssociation, setSelectedAssociation] = useState(null);
+  const [selectedViewAssociation, setSelectedViewAssociation] = useState(null);
   const [newAssociation, setNewAssociation] = useState({
     name: "",
     province: "",
@@ -295,7 +319,6 @@ export default function FullCoopAssociations() {
     },
     commodity: "",
     status: { active: "P", inactive: null },
-    // Group categories
     groupCategories: {
       womenLed: false,
       menLed: false,
@@ -369,7 +392,6 @@ export default function FullCoopAssociations() {
           item.municipality?.toLowerCase().includes(term)
         );
       }
-      // Group category filters
       if (filters.womenLed) result = result.filter(item => item.groupCategories?.womenLed === true);
       if (filters.menLed) result = result.filter(item => item.groupCategories?.menLed === true);
       if (filters.seniorCitizensGroup) result = result.filter(item => item.groupCategories?.seniorCitizensGroup === true);
@@ -608,6 +630,21 @@ export default function FullCoopAssociations() {
   const openDeleteModal = (association) => {
     setSelectedAssociation(association);
     setIsDeleteModalOpen(true);
+  };
+
+  const openViewModal = (association) => {
+    setSelectedViewAssociation(association);
+    setIsViewModalOpen(true);
+  };
+
+  const handleEditFromView = () => {
+    setIsViewModalOpen(false);
+    openEditModal(selectedViewAssociation);
+  };
+
+  const handleDeleteFromView = () => {
+    setIsViewModalOpen(false);
+    openDeleteModal(selectedViewAssociation);
   };
 
   const openImportModal = () => {
@@ -952,7 +989,7 @@ export default function FullCoopAssociations() {
       </style></head>
       <body>
         <table style="width:100%; border-collapse: collapse; margin-bottom: 10px;">
-          <tr><td colspan="16" style="text-align:center; font-weight:bold; font-size:18px;">LIST OF REGISTERED ASSOCIATIONS</td></tr>
+           <tr><td colspan="16" style="text-align:center; font-weight:bold; font-size:18px;">LIST OF REGISTERED ASSOCIATIONS</td></tr>
           <tr style="height:15px;"><td colspan="16"></td><td colspan="6" style="font-weight:bold;">LEGEND:</td></tr>
           <tr><td colspan="2"><strong>PROVINCE</strong></td><td colspan="14">: ${displayProvince}</td><td colspan="6" class="no-data" style="text-align:center;">NO DATA</td></tr>
           <tr><td colspan="2"><strong>MUNICIPALITY</strong></td><td colspan="14">: ${displayMunicipality}</td><td colspan="6" class="no-registration" style="text-align:center;">NO REGISTRATION</td></tr>
@@ -1306,6 +1343,7 @@ export default function FullCoopAssociations() {
                     index={(currentPage - 1) * itemsPerPage + idx + 1}
                     openEditModal={openEditModal}
                     openDeleteModal={openDeleteModal}
+                    openViewModal={openViewModal}
                     isDifferentlyAbledEmpty={isDifferentlyAbledEmpty}
                     isRegistrationEmpty={isRegistrationEmpty}
                   />
@@ -1389,12 +1427,12 @@ export default function FullCoopAssociations() {
       {/* Add Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div ref={modalRef} className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden animate-fadeIn">
-            <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50 flex items-center justify-between">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh]">
+            <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50 flex items-center justify-between rounded-t-3xl sticky top-0 bg-white z-10">
               <div><h3 className="text-2xl font-bold text-gray-900">Add New Association</h3><p className="text-sm text-gray-600 mt-1">Fill in the details below to register a new association</p></div>
-              <button onClick={()=>setIsAddModalOpen(false)} className="p-2.5 hover:bg-white rounded-xl"><FiX className="w-6 h-6 text-gray-500" /></button>
+              <button onClick={()=>setIsAddModalOpen(false)} className="p-2.5 hover:bg-white rounded-xl transition-all duration-200 hover:rotate-90"><FiX className="w-6 h-6 text-gray-500" /></button>
             </div>
-            <div className="p-8 overflow-y-auto max-h-[calc(90vh-140px)]">
+            <div className="p-8 overflow-y-auto flex-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Association Name <span className="text-red-500">*</span></label><input type="text" name="name" value={newAssociation.name} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500" placeholder="Enter association name" required/></div>
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Province <span className="text-red-500">*</span></label><select name="province" value={newAssociation.province} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500"><option value="">Select Province</option>{uniqueProvinces.map((p,i)=><option key={i} value={p}>{p}</option>)}</select></div>
@@ -1428,9 +1466,11 @@ export default function FullCoopAssociations() {
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Amount</label><input type="text" name="interventionAmount" value={newAssociation.interventionAmount} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl" placeholder="e.g., 100 bags, ₱50,000"/></div>
               </div></div>
             </div>
-            <div className="px-8 py-6 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white flex justify-end space-x-4">
-              <button onClick={()=>setIsAddModalOpen(false)} className="px-6 py-3.5 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-              <button onClick={handleAddAssociation} className="px-8 py-3.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 shadow-lg flex items-center"><FiSave className="mr-2 text-lg" />Save Association</button>
+            <div className="px-8 py-6 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white rounded-b-3xl sticky bottom-0 bg-white">
+              <div className="flex justify-end space-x-4">
+                <button onClick={()=>setIsAddModalOpen(false)} className="px-6 py-3.5 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+                <button onClick={handleAddAssociation} className="px-8 py-3.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 shadow-lg flex items-center"><FiSave className="mr-2 text-lg" />Save Association</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1439,12 +1479,12 @@ export default function FullCoopAssociations() {
       {/* Edit Modal */}
       {isEditModalOpen && selectedAssociation && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div ref={modalRef} className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden animate-fadeIn">
-            <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-cyan-50 flex items-center justify-between">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh]">
+            <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-cyan-50 flex items-center justify-between rounded-t-3xl sticky top-0 bg-white z-10">
               <div><h3 className="text-2xl font-bold text-gray-900">Edit Association</h3><p className="text-sm text-gray-600 mt-1">Update the details of this association</p></div>
               <button onClick={()=>setIsEditModalOpen(false)} className="p-2.5 hover:bg-white rounded-xl"><FiX className="w-6 h-6 text-gray-500" /></button>
             </div>
-            <div className="p-8 overflow-y-auto max-h-[calc(90vh-140px)]">
+            <div className="p-8 overflow-y-auto flex-1">
               <div className="mb-6 p-4 bg-yellow-50 border-l-4 border-l-yellow-500 rounded-r-lg"><p className="text-sm text-gray-700"><span className="font-semibold">Note:</span> Province and Municipality cannot be changed. If you need to move this association to a different location, please delete and create a new one.</p></div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Association Name</label><input type="text" name="name" value={newAssociation.name} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl"/></div>
@@ -1479,9 +1519,11 @@ export default function FullCoopAssociations() {
                 <div><label>Amount</label><input type="text" name="interventionAmount" value={newAssociation.interventionAmount} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl"/></div>
               </div></div>
             </div>
-            <div className="px-8 py-6 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white flex justify-end space-x-4">
-              <button onClick={()=>setIsEditModalOpen(false)} className="px-6 py-3.5 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-              <button onClick={handleUpdateAssociation} className="px-8 py-3.5 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-cyan-700 shadow-lg flex items-center"><FiSave className="mr-2 text-lg" />Update Association</button>
+            <div className="px-8 py-6 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white rounded-b-3xl sticky bottom-0 bg-white">
+              <div className="flex justify-end space-x-4">
+                <button onClick={()=>setIsEditModalOpen(false)} className="px-6 py-3.5 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+                <button onClick={handleUpdateAssociation} className="px-8 py-3.5 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-cyan-700 shadow-lg flex items-center"><FiSave className="mr-2 text-lg" />Update Association</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1490,12 +1532,117 @@ export default function FullCoopAssociations() {
       {/* Delete Modal */}
       {isDeleteModalOpen && selectedAssociation && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div ref={modalRef} className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-fadeIn">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-fadeIn">
             <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-red-50 to-pink-50"><h3 className="text-2xl font-bold text-gray-900">Confirm Deletion</h3></div>
             <div className="p-8"><div className="flex flex-col items-center justify-center mb-6"><div className="w-16 h-16 bg-gradient-to-br from-red-100 to-pink-100 rounded-full flex items-center justify-center mb-4"><FiTrash2 className="w-8 h-8 text-red-600" /></div><p className="text-center text-lg font-medium text-gray-800 mb-2">Are you sure you want to delete this association?</p><p className="text-center text-gray-600 mb-6">This action cannot be undone.</p><div className="bg-red-50 border border-red-200 rounded-2xl p-5 w-full mb-6"><p className="font-bold text-lg text-red-800 mb-1">{selectedAssociation.name}</p><div className="flex flex-col space-y-1 text-sm text-red-600"><p><span className="font-medium">Province:</span> {selectedAssociation.province}</p><p><span className="font-medium">Municipality:</span> {selectedAssociation.municipality}</p><p><span className="font-medium">President:</span> {selectedAssociation.president}</p><p><span className="font-medium">Total Members:</span> {selectedAssociation.totalMembers}</p></div></div><div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 w-full"><p className="text-sm text-yellow-800"><span className="font-bold">⚠️ Warning:</span> All data including member information will be permanently deleted from the system.</p></div></div></div>
             <div className="px-8 py-6 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white flex justify-end space-x-4">
               <button onClick={()=>setIsDeleteModalOpen(false)} className="px-6 py-3 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
               <button onClick={handleDeleteAssociation} className="px-8 py-3 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-xl font-semibold hover:from-red-700 hover:to-pink-700 shadow-lg">Delete Association</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Modal */}
+      {isViewModalOpen && selectedViewAssociation && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh]">
+            <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-between rounded-t-3xl sticky top-0 bg-white z-10">
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900">Association Details</h3>
+                <p className="text-sm text-gray-600 mt-1">Full information of the selected association</p>
+              </div>
+              <button onClick={() => setIsViewModalOpen(false)} className="p-2.5 hover:bg-white rounded-xl transition-all duration-200 hover:rotate-90">
+                <FiX className="w-6 h-6 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="p-8 overflow-y-auto flex-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Association Name</label>
+                  <p className="text-gray-900 font-medium">{selectedViewAssociation.name || "—"}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Province</label>
+                  <p className="text-gray-900 font-medium">{selectedViewAssociation.province || "—"}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Municipality</label>
+                  <p className="text-gray-900 font-medium">{selectedViewAssociation.municipality || "—"}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Complete Address</label>
+                  <p className="text-gray-900 font-medium">{selectedViewAssociation.address || "—"}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Registration Type</label>
+                  <p className="text-gray-900 font-medium">{selectedViewAssociation.registration_type || "—"}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">President</label>
+                  <p className="text-gray-900 font-medium">{selectedViewAssociation.president || "—"}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Contact Number</label>
+                  <p className="text-gray-900 font-medium">{selectedViewAssociation.contact_number || "—"}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Commodity</label>
+                  <p className="text-gray-900 font-medium">{selectedViewAssociation.commodity || "—"}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Status</label>
+                  <p className="text-gray-900 font-medium">{selectedViewAssociation.status || "—"}</p>
+                </div>
+              </div>
+
+              <div className="mb-8">
+                <h4 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-200">Members Breakdown</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div><label className="text-sm text-gray-600">Male Members:</label><p className="font-medium">{selectedViewAssociation.members?.male || "0"}</p></div>
+                  <div><label className="text-sm text-gray-600">Female Members:</label><p className="font-medium">{selectedViewAssociation.members?.female || "0"}</p></div>
+                  <div><label className="text-sm text-gray-600">Senior Citizens:</label><p className="font-medium">{selectedViewAssociation.members?.senior_citizen || "0"}</p></div>
+                  <div><label className="text-sm text-gray-600">Differently-abled:</label><p className="font-medium">{selectedViewAssociation.members?.differently_abled || "0"}</p></div>
+                  <div><label className="text-sm text-gray-600">Young Farmers:</label><p className="font-medium">{selectedViewAssociation.members?.young_farmer || "0"}</p></div>
+                  <div><label className="text-sm text-gray-600">IPs:</label><p className="font-medium">{selectedViewAssociation.members?.ips || "0"}</p></div>
+                </div>
+              </div>
+
+              <div className="mb-8">
+                <h4 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-200">Group Categories</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div><label className="text-sm text-gray-600">Women-Led Group:</label><p className="font-medium">{selectedViewAssociation.groupCategories?.womenLed ? "Yes" : "No"}</p></div>
+                  <div><label className="text-sm text-gray-600">Men-Led Group:</label><p className="font-medium">{selectedViewAssociation.groupCategories?.menLed ? "Yes" : "No"}</p></div>
+                  <div><label className="text-sm text-gray-600">Senior Citizens Group:</label><p className="font-medium">{selectedViewAssociation.groupCategories?.seniorCitizensGroup ? "Yes" : "No"}</p></div>
+                  <div><label className="text-sm text-gray-600">Persons with Disabilities Group:</label><p className="font-medium">{selectedViewAssociation.groupCategories?.personsWithDisabilitiesGroup ? "Yes" : "No"}</p></div>
+                  <div><label className="text-sm text-gray-600">Young Farmers Organization:</label><p className="font-medium">{selectedViewAssociation.groupCategories?.youngFarmersOrganization ? "Yes" : "No"}</p></div>
+                  <div><label className="text-sm text-gray-600">Indigenous Peoples Association:</label><p className="font-medium">{selectedViewAssociation.groupCategories?.indigenousPeoplesAssociation ? "Yes" : "No"}</p></div>
+                </div>
+              </div>
+
+              <div className="mb-8">
+                <h4 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-200">Intervention Information</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div><label className="text-sm text-gray-600">Intervention Reviewed:</label><p className="font-medium">{selectedViewAssociation.interventionReviewed ? "Yes" : "No"}</p></div>
+                  <div><label className="text-sm text-gray-600">Specific Intervention:</label><p className="font-medium">{selectedViewAssociation.specificIntervention || "—"}</p></div>
+                  <div><label className="text-sm text-gray-600">Amount:</label><p className="font-medium">{selectedViewAssociation.interventionAmount || "—"}</p></div>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-8 py-6 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white rounded-b-3xl sticky bottom-0 bg-white">
+              <div className="flex justify-end space-x-4">
+                <button onClick={() => setIsViewModalOpen(false)} className="px-6 py-3.5 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-all duration-200 hover:border-gray-400">
+                  Close
+                </button>
+                <button onClick={handleEditFromView} className="px-6 py-3.5 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-cyan-700 transition-all duration-200 shadow-lg hover:shadow-xl flex items-center">
+                  <FiEdit2 className="mr-2 text-lg" /> Edit
+                </button>
+                <button onClick={handleDeleteFromView} className="px-6 py-3.5 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-xl font-semibold hover:from-red-700 hover:to-pink-700 transition-all duration-200 shadow-lg hover:shadow-xl flex items-center">
+                  <FiTrash2 className="mr-2 text-lg" /> Delete
+                </button>
+              </div>
             </div>
           </div>
         </div>
