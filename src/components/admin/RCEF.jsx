@@ -3,6 +3,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import RcefAccredited from "./RCEF-component/RcefAccredited";
 import RcefWithLackings from "./RCEF-component/RcefWithLackings";
 import RcefExpired from "./RCEF-component/RcefExpired";
+import RcefOnProcess from "./RCEF-component/RcefOnProcess";
+import RcefRenewal from "./RCEF-component/RcefForRenewal";
+import RcefCertificateNumber from "./RCEF-component/RcefCertificateNumber";
 
 const tabs = ["RCEF Accredited", "RCEF With Lackings", "RCEF Expired", "RCEF OnProcess", "RCEF For Renewal", "Certificate Number"];
 
@@ -61,7 +64,9 @@ export default function RCEF() {
             {activeTab === "RCEF With Lackings" && <RcefWithLackings />}
             {activeTab === "RCEF Expired" && <RcefExpired />}
             {activeTab === "RCEF Expired" && <RcefExpired />}
-            {activeTab === "RCEF OnProcess" && <RcefExpired />}
+            {activeTab === "RCEF OnProcess" && <RcefOnProcess />}
+            {activeTab === "RCEF For Renewal" && <RcefRenewal />}
+            {activeTab === "Certificate Number" && <RcefCertificateNumber />}
           </motion.div>
         </AnimatePresence>
       </div>

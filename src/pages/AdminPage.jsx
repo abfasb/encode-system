@@ -7,6 +7,7 @@ import CSO from "../components/admin/CSO";
 import { Navigate } from "react-router-dom";
 import UploadCso from "../components/UploadCso";
 import RCEF from "../components/admin/RCEF";
+import FullCoopAssociations from "../components/admin/FullCoopAssociations";
 
 export default function AdminPage() {
 
@@ -14,6 +15,7 @@ export default function AdminPage() {
     <AdminLayout>
       <Routes>
         <Route path="dashboard" element={<Dashboard />} />
+        <Route path="full-farmers" element={<FullCoopAssociations />} />
         <Route path="audit" element={<AuditLogs />} />
         <Route path="cso" element={<CSO />} />
         <Route path="upload-cso" element={<UploadCso />} />

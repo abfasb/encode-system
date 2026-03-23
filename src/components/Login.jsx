@@ -1,4 +1,3 @@
-// Login.jsx
 import { useState } from "react";
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword } from "firebase/auth";

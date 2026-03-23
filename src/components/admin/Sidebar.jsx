@@ -29,6 +29,7 @@ import Logo from "../../assets/DA.png";
 export default function Sidebar({
   links = [
     { name: "Dashboard", icon: <FiHome />, key: "dashboard" },
+    { name: "Full Farmers Coop & Associations", icon: <FiUser />, key: "full-farmers" },
     { name: "Audit Logs", icon: <FiUser />, key: "audit" },
     { name: "CSOs", icon: <FiBook />, key: "cso" },
     { name: "Upload CSOs", icon: <FiCloud />, key: "upload-cso" },
@@ -64,7 +65,6 @@ export default function Sidebar({
     });
   };
 
-  // Theme definitions – all class names are static, safe for Tailwind scanning
   const theme = {
     green: {
       bg: 'bg-green-600',

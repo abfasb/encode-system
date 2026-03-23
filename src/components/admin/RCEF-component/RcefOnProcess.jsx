@@ -358,7 +358,6 @@ const RcefOnProcess = () => {
     pending_review: 0
   });
 
-  // ========== Helper: Check if all 18 documents are complete ==========
   const isDocumentComplete = (docReqs) => {
     if (!docReqs) return false;
     const booleanFields = [
@@ -384,21 +383,17 @@ const RcefOnProcess = () => {
     return booleanFields.every(field => docReqs[field] === true);
   };
 
-  // ========== Determine if record should be moved to evaluation ==========
   const shouldMoveToEvaluation = (record) => {
     return record.for_deliberation === true || isDocumentComplete(record.documentary_requirements);
   };
 
-  // ========== Sync complete/deliberation records to evaluation and delete from on-process ==========
   const syncAndMoveToEvaluation = useCallback(async () => {
     try {
-      // Get all RCEF-on-Process records
       const rcefCollection = collection(db, 'rcef-on-process');
       const rcefSnapshot = await getDocs(rcefCollection);
       const rcefRecords = [];
       rcefSnapshot.forEach(doc => rcefRecords.push({ id: doc.id, ...doc.data() }));
 
-      // Get all existing evaluation records (to check duplicates)
       const evalCollection = collection(db, 'rcef-evaluation');
       const evalSnapshot = await getDocs(evalCollection);
       const evalRecords = new Map();
@@ -409,7 +404,6 @@ const RcefOnProcess = () => {
 
       for (const record of rcefRecords) {
         if (shouldMoveToEvaluation(record)) {
-          // If not already in evaluation, copy it
           if (!evalRecords.has(record.id)) {
             const evaluationData = {
               ...record,
@@ -420,7 +414,6 @@ const RcefOnProcess = () => {
             await addDoc(collection(db, 'rcef-evaluation'), evaluationData);
             console.log(`Copied ${record.basic_information?.name_of_association} to evaluation.`);
           }
-          // Delete the original record from rcef-on-process
           await deleteDoc(doc(db, 'rcef-on-process', record.id));
           console.log(`Deleted ${record.basic_information?.name_of_association} from rcef-on-process.`);
         }
@@ -430,7 +423,6 @@ const RcefOnProcess = () => {
     }
   }, []);
 
-  // ========== Fetch RCEF Data ==========
   const fetchRcefData = useCallback(async () => {
     try {
       setLoading(true);
