@@ -4,7 +4,7 @@ import RcefAccredited from "./RCEF-component/RcefAccredited";
 import RcefWithLackings from "./RCEF-component/RcefWithLackings";
 import RcefExpired from "./RCEF-component/RcefExpired";
 
-const tabs = ["RCEF Accredited", "RCEF With Lackings", "RCEF Expired"];
+const tabs = ["RCEF Accredited", "RCEF With Lackings", "RCEF Expired", "RCEF OnProcess", "RCEF For Renewal", "Certificate Number"];
 
 export default function RCEF() {
   const [activeTab, setActiveTab] = useState(tabs[0]);
@@ -60,6 +60,8 @@ export default function RCEF() {
             {activeTab === "RCEF Accredited" && <RcefAccredited />}
             {activeTab === "RCEF With Lackings" && <RcefWithLackings />}
             {activeTab === "RCEF Expired" && <RcefExpired />}
+            {activeTab === "RCEF Expired" && <RcefExpired />}
+            {activeTab === "RCEF OnProcess" && <RcefExpired />}
           </motion.div>
         </AnimatePresence>
       </div>
