@@ -63,7 +63,6 @@ export default function RCEF() {
             {activeTab === "RCEF Accredited" && <RcefAccredited />}
             {activeTab === "RCEF With Lackings" && <RcefWithLackings />}
             {activeTab === "RCEF Expired" && <RcefExpired />}
-            {activeTab === "RCEF Expired" && <RcefExpired />}
             {activeTab === "RCEF OnProcess" && <RcefOnProcess />}
             {activeTab === "RCEF For Renewal" && <RcefRenewal />}
             {activeTab === "Certificate Number" && <RcefCertificateNumber />}

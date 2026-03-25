@@ -135,14 +135,14 @@ export default function Dashboard() {
       activeAssociations,
       provincesCount,
       municipalitiesCount,
-      totalDifferentlyAbled, // renamed to reflect actual meaning
+      totalDifferentlyAbled,
       youngFarmersTotal,
       ipsTotal,
       seniorCitizensTotal,
     };
   }, [data]);
 
-  // Group category counts for bar chart (still based on association counts)
+  // Group category counts for bar chart (based on association counts)
   const groupCategoryCounts = useMemo(() => {
     const counts = {
       "Women-Led": data.filter((item) => item.groupCategories?.womenLed).length,
@@ -165,22 +165,23 @@ export default function Dashboard() {
     ];
   }, [data]);
 
-  // Registration type counts
   const registrationTypeData = useMemo(() => {
+    const allowedTypes = ["CDA", "SEC", "DOLE"];
     const counts = {};
     data.forEach((item) => {
-      const type = item.registration_type || "Not Specified";
-      counts[type] = (counts[type] || 0) + 1;
+      const type = item.registration_type;
+      if (type && allowedTypes.includes(type.toUpperCase())) {
+        const key = type.toUpperCase();
+        counts[key] = (counts[key] || 0) + 1;
+      }
     });
     return Object.entries(counts)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
   }, [data]);
 
-  // Colors for registration types
-  const regTypeColors = ["#10B981", "#3B82F6", "#F59E0B", "#EF4444", "#8B5CF6", "#EC489A"];
+  const regTypeColors = ["#10B981", "#3B82F6", "#F59E0B"];
 
-  // Top provinces
   const provinceData = useMemo(() => {
     const provinceCounts = data.reduce((acc, item) => {
       acc[item.province] = (acc[item.province] || 0) + 1;
@@ -202,7 +203,6 @@ export default function Dashboard() {
 
   return (
     <div className="p-4 md:p-6 bg-gradient-to-br from-gray-50 to-gray-100 flex-1 overflow-auto min-h-screen">
-      {/* Header */}
       <div className="mb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -267,7 +267,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* PWD Card - now shows total differently-abled members */}
         <div className="bg-gradient-to-br from-white to-purple-50 p-5 rounded-2xl shadow-lg border border-purple-200">
           <div className="flex items-center justify-between">
             <div>
@@ -339,9 +338,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* First Row of Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        {/* Group Categories Bar Chart */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -363,7 +360,6 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
 
-        {/* Status Pie Chart */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -396,12 +392,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Second Row: Registration Type Chart (full width) */}
       <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 mb-8">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-lg font-bold text-gray-800">Registration Type Distribution</h3>
-            <p className="text-sm text-gray-500">Number of associations by registration type (DOLE, CDA, SEC, etc.)</p>
+            <p className="text-sm text-gray-500">Number of associations by registration type (CDA, SEC, DOLE)</p>
           </div>
           <div className="bg-indigo-100 p-2 rounded-xl">
             <FiFileText className="text-indigo-600" />

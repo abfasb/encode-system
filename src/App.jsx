@@ -25,6 +25,7 @@ function App() {
         <Route path="/admin/*" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
 
         <Route path="/pds" element={<PdsPage />} />
+        <Route path="/pds" element={<PdsPage />} />
         <Route path="/choose-character" element={<ChooseCharacter  />} />
 
       </Routes>

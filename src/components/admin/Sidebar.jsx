@@ -187,7 +187,6 @@ export default function Sidebar({
                     </span>
                   )}
 
-                  {/* Tooltip for collapsed state */}
                   {!sidebarOpen && (
                     <span className="
                       absolute left-full ml-2 px-2 py-1

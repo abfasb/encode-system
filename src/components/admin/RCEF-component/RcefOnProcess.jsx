@@ -58,11 +58,12 @@ import {
   FolderOpen,
   Layers,
   Send,
-  AlertTriangle
+  AlertTriangle,
+  Award
 } from 'lucide-react';
 import { db } from '../../../config/firebase';
 
-// ========== DataTable Component ==========
+// ========== DataTable Component (unchanged) ==========
 const DataTable = ({
   columns,
   data,
@@ -239,7 +240,7 @@ const DataTable = ({
   );
 };
 
-// ========== Modal Component ==========
+// ========== Modal Component (unchanged) ==========
 const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   if (!isOpen) return null;
 
@@ -273,20 +274,33 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   );
 };
 
-// ========== Initial Form State ==========
+// ========== Initial Form State (includes all fields from RcefAccredited) ==========
 const initialFormState = {
-  province: '',
   no: '',
-  basic_information: {
-    name_of_association: '',
-    contact_person: '',
-    position: '',
-    contact_number: '',
-    email_address: '',
-    no_of_members: '',
-    address: ''
+  province: '',
+  municipality: '',
+  name: '',
+  date_accredited: '',
+  date_expiration: '',
+  date_application_received: '',
+  type_fca: '',
+  male_members: '',
+  female_members: '',
+  total_members: '',
+  area_covered: '',
+  address: '',
+  contact_person: '',
+  contact_no: '',
+  remarks: '',
+  certificate_of_accreditation: '',
+  submitted_documents: '',
+  interventions: {
+    seeds: false,
+    mech: false,
+    credit: false,
+    extn: false
   },
-  date_of_receipt: '',
+  // Processing fields
   documentary_requirements: {
     accomplished_and_notarized_application_form: false,
     remarks: '',
@@ -317,8 +331,7 @@ const initialFormState = {
     evaluated_by: '',
     reviewed_by: ''
   },
-  for_deliberation: false,
-  remarks: ''
+  for_deliberation: false
 };
 
 // ========== Main Component ==========
@@ -335,8 +348,8 @@ const RcefOnProcess = () => {
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [formData, setFormData] = useState(initialFormState);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState('all'); // 'all', 'for_deliberation', 'in_process'
   const [filters, setFilters] = useState({
-    for_deliberation: 'all',
     province: 'all',
     status: 'all'
   });
@@ -358,6 +371,7 @@ const RcefOnProcess = () => {
     pending_review: 0
   });
 
+  // ========== Helper: Check if all documentary requirements are completed ==========
   const isDocumentComplete = (docReqs) => {
     if (!docReqs) return false;
     const booleanFields = [
@@ -383,46 +397,7 @@ const RcefOnProcess = () => {
     return booleanFields.every(field => docReqs[field] === true);
   };
 
-  const shouldMoveToEvaluation = (record) => {
-    return record.for_deliberation === true || isDocumentComplete(record.documentary_requirements);
-  };
-
-  const syncAndMoveToEvaluation = useCallback(async () => {
-    try {
-      const rcefCollection = collection(db, 'rcef-on-process');
-      const rcefSnapshot = await getDocs(rcefCollection);
-      const rcefRecords = [];
-      rcefSnapshot.forEach(doc => rcefRecords.push({ id: doc.id, ...doc.data() }));
-
-      const evalCollection = collection(db, 'rcef-evaluation');
-      const evalSnapshot = await getDocs(evalCollection);
-      const evalRecords = new Map();
-      evalSnapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.originalId) evalRecords.set(data.originalId, doc.id);
-      });
-
-      for (const record of rcefRecords) {
-        if (shouldMoveToEvaluation(record)) {
-          if (!evalRecords.has(record.id)) {
-            const evaluationData = {
-              ...record,
-              originalId: record.id,
-              movedToEvaluationAt: new Date().toISOString()
-            };
-            delete evaluationData.id;
-            await addDoc(collection(db, 'rcef-evaluation'), evaluationData);
-            console.log(`Copied ${record.basic_information?.name_of_association} to evaluation.`);
-          }
-          await deleteDoc(doc(db, 'rcef-on-process', record.id));
-          console.log(`Deleted ${record.basic_information?.name_of_association} from rcef-on-process.`);
-        }
-      }
-    } catch (err) {
-      console.error('Error syncing to evaluation:', err);
-    }
-  }, []);
-
+  // ========== Fetch RCEF On‑Process Data ==========
   const fetchRcefData = useCallback(async () => {
     try {
       setLoading(true);
@@ -454,22 +429,19 @@ const RcefOnProcess = () => {
       }).length;
 
       setStats({ total, for_deliberation, completed_documents, pending_review });
-
-      // After fetching, move eligible records to evaluation and delete from on-process
-      await syncAndMoveToEvaluation();
     } catch (err) {
       console.error('Error fetching RCEF data:', err);
       setError('Failed to load data. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, [syncAndMoveToEvaluation]);
+  }, []);
 
   useEffect(() => {
     fetchRcefData();
   }, [fetchRcefData]);
 
-  // ========== Input Change Handler ==========
+  // ========== Input Change Handler (supports nested fields) ==========
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
 
@@ -512,11 +484,11 @@ const RcefOnProcess = () => {
     }
   };
 
-  // ========== Submit Handler ==========
+  // ========== Submit Handler (Add / Edit) ==========
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      if (!formData.no || !formData.basic_information.name_of_association) {
+      if (!formData.no || !formData.name) {
         setError('No. and Name of Association are required fields');
         return;
       }
@@ -533,7 +505,7 @@ const RcefOnProcess = () => {
       setFormData(initialFormState);
       setEditingId(null);
       setShowAddModal(false);
-      await fetchRcefData(); // includes sync and delete
+      await fetchRcefData();
 
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
@@ -563,9 +535,9 @@ const RcefOnProcess = () => {
 
     try {
       await deleteDoc(doc(db, 'rcef-on-process', selectedRecord.id));
-      setSuccess(`${selectedRecord.basic_information.name_of_association} deleted successfully!`);
+      setSuccess(`${selectedRecord.name} deleted successfully!`);
       setShowDeleteModal(false);
-      await fetchRcefData(); // includes sync to evaluation
+      await fetchRcefData();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error('Error deleting record:', err);
@@ -580,7 +552,114 @@ const RcefOnProcess = () => {
     setShowDeleteModal(true);
   };
 
-  // ========== Export to Excel ==========
+  // ========== Mark Record for Deliberation ==========
+  const handleMarkForDeliberation = async () => {
+    if (!selectedRecord) return;
+
+    try {
+      const updatedRecord = { ...selectedRecord, for_deliberation: true };
+      const docRef = doc(db, 'rcef-on-process', selectedRecord.id);
+      await updateDoc(docRef, { for_deliberation: true });
+      setSuccess(`${selectedRecord.name} has been marked for deliberation.`);
+      setShowViewModal(false);
+      setSelectedRecord(null);
+      await fetchRcefData();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      console.error('Error marking for deliberation:', err);
+      setError('Failed to mark record for deliberation. Please try again.');
+    }
+  };
+
+  // ========== Get Next Sequence Number for Accreditation ==========
+  const getNextSequenceNumber = async (province, municipality) => {
+    if (!province || !municipality) return '1';
+    try {
+      const q = query(
+        collection(db, 'rcef'),
+        where('province', '==', province),
+        where('municipality', '==', municipality),
+        orderBy('no', 'desc'),
+        limit(1)
+      );
+      const querySnapshot = await getDocs(q);
+      if (querySnapshot.empty) {
+        return '1';
+      }
+      const lastNo = querySnapshot.docs[0].data().no;
+      const lastNum = parseInt(lastNo, 10);
+      return isNaN(lastNum) ? '1' : (lastNum + 1).toString();
+    } catch (error) {
+      console.error('Error getting next sequence number:', error);
+      return '1';
+    }
+  };
+
+  // ========== Accredit a Record (move to rcef collection) ==========
+  const handleAccredit = async () => {
+    if (!selectedRecord) return;
+
+    try {
+      // 1. Validate required fields for accreditation
+      if (!selectedRecord.name || !selectedRecord.province || !selectedRecord.municipality) {
+        setError('Missing required fields for accreditation (name, province, municipality).');
+        return;
+      }
+
+      // 2. Get next sequence number for the target province/municipality
+      const nextNo = await getNextSequenceNumber(selectedRecord.province, selectedRecord.municipality);
+
+      // 3. Prepare the accredited record (copy all accreditation fields)
+      const accreditedRecord = {
+        no: nextNo,
+        province: selectedRecord.province,
+        municipality: selectedRecord.municipality,
+        name: selectedRecord.name,
+        date_accredited: new Date().toISOString(),
+        date_expiration: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString(),
+        date_application_received: selectedRecord.date_application_received || '',
+        type_fca: selectedRecord.type_fca || '',
+        male_members: Number(selectedRecord.male_members) || 0,
+        female_members: Number(selectedRecord.female_members) || 0,
+        total_members: Number(selectedRecord.total_members) || 0,
+        area_covered: selectedRecord.area_covered || '',
+        address: selectedRecord.address || '',
+        contact_person: selectedRecord.contact_person || '',
+        contact_no: selectedRecord.contact_no || '',
+        remarks: selectedRecord.remarks || '',
+        certificate_of_accreditation: selectedRecord.certificate_of_accreditation || '',
+        submitted_documents: selectedRecord.submitted_documents || '',
+        interventions: selectedRecord.interventions || { seeds: false, mech: false, credit: false, extn: false }
+      };
+
+      // 4. Add to rcef collection
+      const rcefDocRef = await addDoc(collection(db, 'rcef'), accreditedRecord);
+      const rcefId = rcefDocRef.id;
+
+      // 5. Add to fullcso-farmers collection
+      const fullCsoRecord = {
+        ...accreditedRecord,
+        source: 'rcef',
+        rcefId: rcefId,
+      };
+      await addDoc(collection(db, 'fullcso-farmers'), fullCsoRecord);
+
+      // 6. Delete from rcef-on-process
+      await deleteDoc(doc(db, 'rcef-on-process', selectedRecord.id));
+
+      setSuccess(`${selectedRecord.name} has been successfully accredited and moved to the RCEF Accredited list.`);
+      setShowViewModal(false);
+      setSelectedRecord(null);
+      await fetchRcefData(); // Refresh the on-process list
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      console.error('Error during accreditation:', err);
+      setError('Failed to accredit record. Please try again.');
+    }
+  };
+
+  // ========== Export to Excel (Processing Checklist) ==========
+  // (This function remains unchanged – it uses the existing export logic)
   const exportToExcelWithBeautifulFormatting = async () => {
     try {
       const now = new Date();
@@ -767,15 +846,15 @@ const RcefOnProcess = () => {
 
           dataRow[0] = item.no || '';
 
-          dataRow[1] = item.basic_information?.name_of_association || '';
-          dataRow[2] = item.basic_information?.contact_person || '';
-          dataRow[3] = item.basic_information?.position || '';
-          dataRow[4] = item.basic_information?.contact_number || '';
-          dataRow[5] = item.basic_information?.email_address || '';
-          dataRow[6] = item.basic_information?.no_of_members || '';
-          dataRow[7] = item.basic_information?.address || '';
+          dataRow[1] = item.name || '';
+          dataRow[2] = item.contact_person || '';
+          dataRow[3] = ''; // position (not used in processing checklist)
+          dataRow[4] = item.contact_no || '';
+          dataRow[5] = ''; // email (not used)
+          dataRow[6] = item.total_members || '';
+          dataRow[7] = item.address || '';
 
-          dataRow[8] = item.date_of_receipt || '';
+          dataRow[8] = item.date_application_received || '';
 
           dataRow[9] = item.documentary_requirements?.accomplished_and_notarized_application_form ? '☑' : '☐';
           dataRow[10] = item.documentary_requirements?.remarks || '';
@@ -976,16 +1055,13 @@ const RcefOnProcess = () => {
             const rcefRecord = {
               province: '',
               no: row[0]?.toString() || '',
-              basic_information: {
-                name_of_association: row[2] || '',
-                contact_person: row[3] || '',
-                position: row[4] || '',
-                contact_number: row[5]?.toString() || '',
-                email_address: row[6] || '',
-                no_of_members: row[7]?.toString() || '',
-                address: row[8] || ''
-              },
-              date_of_receipt: row[1] || '',
+              name: row[2] || '',
+              contact_person: row[3] || '',
+              contact_no: row[5]?.toString() || '',
+              address: row[8] || '',
+              date_application_received: row[1] || '',
+              total_members: row[7]?.toString() || '',
+              remarks: row[36] || '',
               documentary_requirements: {
                 accomplished_and_notarized_application_form: processCheckbox(row[9]),
                 remarks: row[10] || '',
@@ -1016,10 +1092,10 @@ const RcefOnProcess = () => {
                 evaluated_by: row[33] || '',
                 reviewed_by: row[34] || ''
               },
-              for_deliberation: processCheckbox(row[35]),
-              remarks: row[36] || ''
+              for_deliberation: processCheckbox(row[35])
             };
 
+            // Find province from previous row
             for (let j = i - 1; j >= 0; j--) {
               const prevRow = jsonData[j];
               if (prevRow && prevRow[0] && ['OCCIDENTAL MINDORO', 'ORIENTAL MINDORO', 'MARINDUQUE', 'PALAWAN', 'ROMBLON', 'UNKNOWN PROVINCE'].includes(prevRow[0].toUpperCase())) {
@@ -1049,7 +1125,7 @@ const RcefOnProcess = () => {
             setImportProgress(0);
             setShowImportModal(false);
             setSuccess(`${imported} records imported successfully!`);
-            fetchRcefData(); // includes sync and delete
+            fetchRcefData();
             setTimeout(() => setSuccess(''), 3000);
           }, 500);
 
@@ -1090,24 +1166,25 @@ const RcefOnProcess = () => {
     setPagination(prev => ({ ...prev, rowsPerPage: rows, currentPage: 1 }));
   };
 
-  // ========== Filtered Data ==========
+  // ========== Filtered Data (with tab selection) ==========
   const filteredData = useMemo(() => {
     let filtered = [...rcefData];
+
+    // Apply tab filter
+    if (activeTab === 'for_deliberation') {
+      filtered = filtered.filter(item => item.for_deliberation === true);
+    } else if (activeTab === 'in_process') {
+      filtered = filtered.filter(item => item.for_deliberation !== true);
+    }
 
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
       filtered = filtered.filter(item =>
-        item.basic_information?.name_of_association?.toLowerCase().includes(searchLower) ||
-        item.basic_information?.contact_person?.toLowerCase().includes(searchLower) ||
-        item.basic_information?.address?.toLowerCase().includes(searchLower) ||
+        item.name?.toLowerCase().includes(searchLower) ||
+        item.contact_person?.toLowerCase().includes(searchLower) ||
+        item.address?.toLowerCase().includes(searchLower) ||
         item.province?.toLowerCase().includes(searchLower) ||
         item.remarks?.toLowerCase().includes(searchLower)
-      );
-    }
-
-    if (filters.for_deliberation !== 'all') {
-      filtered = filtered.filter(item =>
-        filters.for_deliberation === 'yes' ? item.for_deliberation : !item.for_deliberation
       );
     }
 
@@ -1130,7 +1207,7 @@ const RcefOnProcess = () => {
     });
 
     return filtered;
-  }, [rcefData, searchTerm, filters, sortConfig]);
+  }, [rcefData, searchTerm, filters, sortConfig, activeTab]);
 
   const paginatedData = useMemo(() => {
     const startIndex = (pagination.currentPage - 1) * pagination.rowsPerPage;
@@ -1152,41 +1229,31 @@ const RcefOnProcess = () => {
       header: 'Association',
       render: (row) => (
         <div>
-          <div className="font-semibold text-gray-900">{row.basic_information?.name_of_association}</div>
+          <div className="font-semibold text-gray-900">{row.name}</div>
           <div className="text-sm text-gray-500 flex items-center mt-1">
             <MapPin className="h-3 w-3 mr-1" />
-            {row.province || 'No province'}
+            {row.province || 'No province'} • {row.municipality || ''}
           </div>
         </div>
       )
     },
     {
-      key: 'contact_person',
-      header: 'Contact Person',
+      key: 'contact',
+      header: 'Contact',
       render: (row) => (
         <div>
-          <div className="font-medium text-gray-900">{row.basic_information?.contact_person}</div>
-          <div className="text-sm text-gray-500">{row.basic_information?.position}</div>
+          <div className="font-medium text-gray-900">{row.contact_person || '—'}</div>
+          <div className="text-sm text-gray-500">{row.contact_no || '—'}</div>
         </div>
       )
     },
     {
-      key: 'contact',
-      header: 'Contact Info',
+      key: 'members',
+      header: 'Members',
       render: (row) => (
-        <div className="space-y-1">
-          {row.basic_information?.contact_number && (
-            <div className="flex items-center text-sm text-black">
-              <Phone className="h-3 w-3 mr-2 text-gray-600" />
-              {row.basic_information.contact_number}
-            </div>
-          )}
-          {row.basic_information?.email_address && (
-            <div className="flex items-center text-sm text-black">
-              <Mail className="h-3 w-3 mr-2 text-gray-600" />
-              {row.basic_information.email_address}
-            </div>
-          )}
+        <div className="flex items-center">
+          <Users className="h-3 w-3 mr-1 text-gray-500" />
+          {row.total_members || 0}
         </div>
       )
     },
@@ -1206,7 +1273,7 @@ const RcefOnProcess = () => {
             {row.for_deliberation ? 'For Deliberation' : 'In Process'}
           </div>
           <div className="text-xs text-gray-500">
-            {row.date_of_receipt ? `Received: ${new Date(row.date_of_receipt).toLocaleDateString()}` : 'No receipt date'}
+            {row.date_application_received ? `Received: ${new Date(row.date_application_received).toLocaleDateString()}` : 'No receipt date'}
           </div>
         </div>
       )
@@ -1403,6 +1470,42 @@ const RcefOnProcess = () => {
         </div>
       )}
 
+      {/* Tabs */}
+      <div className="mb-6 border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setActiveTab('all')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'all'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            All Records
+          </button>
+          <button
+            onClick={() => setActiveTab('for_deliberation')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'for_deliberation'
+                ? 'border-green-500 text-green-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            For Deliberation
+          </button>
+          <button
+            onClick={() => setActiveTab('in_process')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'in_process'
+                ? 'border-yellow-500 text-yellow-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            In Process
+          </button>
+        </nav>
+      </div>
+
       {/* Search & Filter */}
       <div className="mb-6 bg-white rounded-2xl shadow-lg p-6">
         <div className="flex flex-col lg:flex-row gap-4">
@@ -1428,16 +1531,6 @@ const RcefOnProcess = () => {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <select
-              value={filters.for_deliberation}
-              onChange={(e) => handleFilterChange('for_deliberation', e.target.value)}
-              className="px-4 py-3 text-black bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Status</option>
-              <option value="yes">For Deliberation</option>
-              <option value="no">In Process</option>
-            </select>
-
             <select
               value={filters.province}
               onChange={(e) => handleFilterChange('province', e.target.value)}
@@ -1504,7 +1597,7 @@ const RcefOnProcess = () => {
         </div>
       </div>
 
-      {/* ADD / EDIT MODAL */}
+      {/* ADD / EDIT MODAL (unchanged) */}
       <Modal
         isOpen={showAddModal}
         onClose={() => {
@@ -1545,19 +1638,41 @@ const RcefOnProcess = () => {
                   className="w-full px-4 py-2.5 bg-white border border-gray-300 text-black rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">Select Province</option>
-                  <option value="OCCIDENTAL MINDORO">Occidental Mindoro</option>
-                  <option value="ORIENTAL MINDORO">Oriental Mindoro</option>
-                  <option value="MARINDUQUE">Marinduque</option>
-                  <option value="PALAWAN">Palawan</option>
-                  <option value="ROMBLON">Romblon</option>
+                  <option value="Occidental Mindoro">Occidental Mindoro</option>
+                  <option value="Oriental Mindoro">Oriental Mindoro</option>
+                  <option value="Marinduque">Marinduque</option>
+                  <option value="Palawan">Palawan</option>
+                  <option value="Romblon">Romblon</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date of Receipt</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Municipality</label>
+                <input
+                  type="text"
+                  name="municipality"
+                  value={formData.municipality}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-2.5 bg-white border border-gray-300 text-black rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name of Association *</label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  required
+                  className="w-full px-4 py-2.5 bg-white border border-gray-300 text-black rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter association name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Date Application Received</label>
                 <input
                   type="date"
-                  name="date_of_receipt"
-                  value={formData.date_of_receipt}
+                  name="date_application_received"
+                  value={formData.date_application_received}
                   onChange={handleInputChange}
                   className="w-full px-4 py-2.5 bg-white border border-gray-300 text-black rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
@@ -1565,99 +1680,162 @@ const RcefOnProcess = () => {
             </div>
           </div>
 
-          {/* Basic Information */}
+          {/* Basic Information (Accreditation fields) */}
           <div className="bg-green-50 rounded-xl p-6">
             <h4 className="font-semibold text-green-800 mb-4 text-lg flex items-center">
               <User className="h-5 w-5 mr-2" />
-              Basic Information
+              Association Details
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name of Association *</label>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type of FCA</label>
                 <input
                   type="text"
-                  name="basic_information.name_of_association"
-                  value={formData.basic_information.name_of_association}
+                  name="type_fca"
+                  value={formData.type_fca}
                   onChange={handleInputChange}
-                  required
-                  className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  placeholder="Enter association name"
+                  className="w-full px-4 py-2.5 bg-white border border-gray-300 text-black rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  placeholder="e.g., Cooperative, Association"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
                 <input
                   type="text"
-                  name="basic_information.contact_person"
-                  value={formData.basic_information.contact_person}
+                  name="contact_person"
+                  value={formData.contact_person}
                   onChange={handleInputChange}
-                  className="w-full px-4 text-black py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-4 py-2.5 bg-white border border-gray-300 text-black rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="Full name"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Position</label>
-                <input
-                  type="text"
-                  name="basic_information.position"
-                  value={formData.basic_information.position}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-2.5  text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  placeholder="Position/Role"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number</label>
                 <input
-                  type="tel"
-                  name="basic_information.contact_number"
-                  value={formData.basic_information.contact_number}
+                  type="text"
+                  name="contact_no"
+                  value={formData.contact_no}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-4 py-2.5 bg-white border border-gray-300 text-black rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="Phone number"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                <input
-                  type="email"
-                  name="basic_information.email_address"
-                  value={formData.basic_information.email_address}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  placeholder="email@example.com"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">No. of Members</label>
-                <input
-                  type="text"
-                  name="basic_information.no_of_members"
-                  value={formData.basic_information.no_of_members}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  placeholder="e.g., 100 members M-91; F-9"
-                />
-              </div>
-              <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
                 <input
                   type="text"
-                  name="basic_information.address"
-                  value={formData.basic_information.address}
+                  name="address"
+                  value={formData.address}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-4 py-2.5 bg-white border border-gray-300 text-black rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="Full address"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Male Members</label>
+                <input
+                  type="number"
+                  name="male_members"
+                  value={formData.male_members}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-2.5 bg-white border border-gray-300 text-black rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Female Members</label>
+                <input
+                  type="number"
+                  name="female_members"
+                  value={formData.female_members}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-2.5 bg-white border border-gray-300 text-black rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Total Members</label>
+                <input
+                  type="number"
+                  name="total_members"
+                  value={formData.total_members}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-2.5 bg-white border border-gray-300 text-black rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Area Covered (ha)</label>
+                <input
+                  type="text"
+                  name="area_covered"
+                  value={formData.area_covered}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-2.5 bg-white border border-gray-300 text-black rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  placeholder="e.g., 150.5"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Certificate of Accreditation (if any)</label>
+                <input
+                  type="text"
+                  name="certificate_of_accreditation"
+                  value={formData.certificate_of_accreditation}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-2.5 bg-white border border-gray-300 text-black rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  placeholder="File reference or remarks"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Submitted Documents</label>
+                <input
+                  type="text"
+                  name="submitted_documents"
+                  value={formData.submitted_documents}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-2.5 bg-white border border-gray-300 text-black rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  placeholder="List of documents submitted"
                 />
               </div>
             </div>
           </div>
 
-          {/* Documentary Requirements */}
+          {/* Interventions */}
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-800 mb-4 text-lg flex items-center">
+              <Building className="h-5 w-5 mr-2 text-green-600" />
+              Interventions
+            </h4>
+            <div className="grid grid-cols-2 gap-4">
+              <CheckboxField
+                name="interventions.seeds"
+                label="Seeds"
+                checked={formData.interventions.seeds}
+                onChange={handleInputChange}
+              />
+              <CheckboxField
+                name="interventions.mech"
+                label="Mechanization"
+                checked={formData.interventions.mech}
+                onChange={handleInputChange}
+              />
+              <CheckboxField
+                name="interventions.credit"
+                label="Credit"
+                checked={formData.interventions.credit}
+                onChange={handleInputChange}
+              />
+              <CheckboxField
+                name="interventions.extn"
+                label="Extension"
+                checked={formData.interventions.extn}
+                onChange={handleInputChange}
+              />
+            </div>
+          </div>
+
+          {/* Documentary Requirements (Processing) */}
           <div className="bg-amber-50 rounded-xl p-6">
             <h4 className="font-semibold text-amber-800 mb-4 text-lg flex items-center">
               <FileCheck className="h-5 w-5 mr-2" />
-              Documentary Requirements
+              Documentary Requirements (Processing Checklist)
             </h4>
 
             <div className="mb-4">
@@ -1884,7 +2062,7 @@ const RcefOnProcess = () => {
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Remarks</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Remarks (General)</label>
                 <textarea
                   name="remarks"
                   value={formData.remarks}
@@ -1893,9 +2071,6 @@ const RcefOnProcess = () => {
                   className="w-full px-4 text-black py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
                   placeholder="Enter any remarks, follow-up dates, or additional notes"
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  Example: Follow up date: March 11, 2024, March 17, 2024, March 26, 2024...
-                </p>
               </div>
             </div>
           </div>
@@ -1922,7 +2097,7 @@ const RcefOnProcess = () => {
         </form>
       </Modal>
 
-      {/* VIEW MODAL */}
+      {/* VIEW MODAL (enhanced with Mark for Deliberation button) */}
       <Modal
         isOpen={showViewModal}
         onClose={() => setShowViewModal(false)}
@@ -1935,13 +2110,13 @@ const RcefOnProcess = () => {
             <div className="bg-blue-50 rounded-xl p-6">
               <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900">{selectedRecord.basic_information?.name_of_association}</h2>
-                  <div className="flex items-center mt-2 space-x-3">
+                  <h2 className="text-2xl font-bold text-gray-900">{selectedRecord.name}</h2>
+                  <div className="flex items-center mt-2 space-x-3 flex-wrap gap-2">
                     <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
                       No. {selectedRecord.no}
                     </span>
                     <span className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-sm font-medium">
-                      {selectedRecord.province}
+                      {selectedRecord.province} • {selectedRecord.municipality || '—'}
                     </span>
                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                       selectedRecord.for_deliberation ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
@@ -1967,39 +2142,72 @@ const RcefOnProcess = () => {
             <div className="bg-white border border-gray-200 rounded-xl p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                 <User className="h-5 w-5 mr-2 text-blue-600" />
-                Basic Information
+                Association Details
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div>
                   <p className="text-sm text-gray-500">Contact Person</p>
-                  <p className="font-medium text-black mt-1">{selectedRecord.basic_information?.contact_person || 'Not specified'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Position</p>
-                  <p className="font-medium text-black mt-1">{selectedRecord.basic_information?.position || 'Not specified'}</p>
+                  <p className="font-medium text-black mt-1">{selectedRecord.contact_person || 'Not specified'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Contact Number</p>
-                  <p className="font-medium text-black mt-1">{selectedRecord.basic_information?.contact_number || 'Not specified'}</p>
+                  <p className="font-medium text-black mt-1">{selectedRecord.contact_no || 'Not specified'}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Email Address</p>
-                  <p className="font-medium text-black mt-1">{selectedRecord.basic_information?.email_address || 'Not specified'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">No. of Members</p>
-                  <p className="font-medium text-black mt-1">{selectedRecord.basic_information?.no_of_members || 'Not specified'}</p>
+                  <p className="text-sm text-gray-500">Type of FCA</p>
+                  <p className="font-medium text-black mt-1">{selectedRecord.type_fca || 'Not specified'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Date of Receipt</p>
                   <p className="font-medium text-black mt-1">
-                    {selectedRecord.date_of_receipt ? new Date(selectedRecord.date_of_receipt).toLocaleDateString() : 'Not specified'}
+                    {selectedRecord.date_application_received ? new Date(selectedRecord.date_application_received).toLocaleDateString() : 'Not specified'}
                   </p>
                 </div>
-                <div className="md:col-span-3">
+                <div>
                   <p className="text-sm text-gray-500">Address</p>
-                  <p className="font-medium text-black mt-1">{selectedRecord.basic_information?.address || 'Not specified'}</p>
+                  <p className="font-medium text-black mt-1">{selectedRecord.address || 'Not specified'}</p>
                 </div>
+                <div>
+                  <p className="text-sm text-gray-500">Members</p>
+                  <p className="font-medium text-black mt-1">
+                    Male: {selectedRecord.male_members || 0} | Female: {selectedRecord.female_members || 0} | Total: {selectedRecord.total_members || 0}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Area Covered</p>
+                  <p className="font-medium text-black mt-1">{selectedRecord.area_covered || 0} ha</p>
+                </div>
+                <div className="md:col-span-2">
+                  <p className="text-sm text-gray-500">Certificate of Accreditation</p>
+                  <p className="font-medium text-black mt-1">{selectedRecord.certificate_of_accreditation || 'Not specified'}</p>
+                </div>
+                <div className="md:col-span-2">
+                  <p className="text-sm text-gray-500">Submitted Documents</p>
+                  <p className="font-medium text-black mt-1">{selectedRecord.submitted_documents || 'Not specified'}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Interventions */}
+            <div className="bg-white border border-gray-200 rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Interventions</h3>
+              <div className="flex flex-wrap gap-2">
+                {selectedRecord.interventions?.seeds && (
+                  <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">Seeds</span>
+                )}
+                {selectedRecord.interventions?.mech && (
+                  <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm">Mechanization</span>
+                )}
+                {selectedRecord.interventions?.credit && (
+                  <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">Credit</span>
+                )}
+                {selectedRecord.interventions?.extn && (
+                  <span className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm">Extension</span>
+                )}
+                {!selectedRecord.interventions?.seeds && !selectedRecord.interventions?.mech &&
+                 !selectedRecord.interventions?.credit && !selectedRecord.interventions?.extn && (
+                  <p className="text-gray-500">None</p>
+                )}
               </div>
             </div>
 
@@ -2153,12 +2361,28 @@ const RcefOnProcess = () => {
                 <Trash2 className="h-4 w-4 inline mr-2" />
                 Delete Record
               </button>
+              {!selectedRecord.for_deliberation && (
+                <button
+                  onClick={handleMarkForDeliberation}
+                  className="px-5 py-2.5 bg-yellow-600 text-white font-medium rounded-xl hover:bg-yellow-700 transition-colors"
+                >
+                  <Send className="h-4 w-4 inline mr-2" />
+                  Mark for Deliberation
+                </button>
+              )}
+              <button
+                onClick={handleAccredit}
+                className="px-5 py-2.5 bg-green-600 text-white font-medium rounded-xl hover:bg-green-700 transition-colors"
+              >
+                <Award className="h-4 w-4 inline mr-2" />
+                Accredit Record
+              </button>
             </div>
           </div>
         )}
       </Modal>
 
-      {/* DELETE MODAL */}
+      {/* DELETE MODAL (unchanged) */}
       <Modal
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
@@ -2171,7 +2395,7 @@ const RcefOnProcess = () => {
           </div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">Delete Processing Record</h3>
           <p className="text-gray-600 mb-6">
-            Are you sure you want to delete <span className="font-semibold">{selectedRecord?.basic_information?.name_of_association}</span>? This action cannot be undone.
+            Are you sure you want to delete <span className="font-semibold">{selectedRecord?.name}</span>? This action cannot be undone.
           </p>
           <div className="flex justify-center space-x-3">
             <button
@@ -2190,7 +2414,7 @@ const RcefOnProcess = () => {
         </div>
       </Modal>
 
-      {/* IMPORT MODAL */}
+      {/* IMPORT MODAL (unchanged) */}
       <Modal
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
