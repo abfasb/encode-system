@@ -1232,7 +1232,6 @@ const Accredited = () => {
     return Array.from(allProvinces).sort();
   }, [csoData]);
 
-  // ---------- Render ----------
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       {/* Header */}

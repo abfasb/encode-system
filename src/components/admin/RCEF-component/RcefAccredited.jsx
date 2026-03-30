@@ -31,7 +31,9 @@ import {
   User,
   FileText,
   Clock,
-  Plus
+  Plus,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import { db } from '../../../config/firebase';
 
@@ -64,10 +66,10 @@ const getYearFromDate = (dateString) => {
   return date.getFullYear();
 };
 
-// ---------- Helper: Normalize province name to title case ----------
-const normalizeProvince = (prov) => {
-  if (!prov) return '';
-  return prov
+// ---------- Helper: Normalize string (trim, title case) ----------
+const normalizeString = (str) => {
+  if (!str) return '';
+  return str
     .trim()
     .toLowerCase()
     .split(' ')
@@ -75,7 +77,10 @@ const normalizeProvince = (prov) => {
     .join(' ');
 };
 
-// ---------- Modal Component ----------
+// ---------- Helper: Normalize province name to title case ----------
+const normalizeProvince = (prov) => normalizeString(prov);
+
+// ---------- Modal Component (unchanged) ----------
 const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   if (!isOpen) return null;
 
@@ -108,6 +113,7 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   );
 };
 
+// ---------- Main Component ----------
 const RcefAccredited = () => {
   // ---------- State ----------
   const [data, setData] = useState([]);
@@ -115,7 +121,7 @@ const RcefAccredited = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // ---------- CRUD States ----------
+  // CRUD States
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
@@ -123,7 +129,7 @@ const RcefAccredited = () => {
   const [selectedApplication, setSelectedApplication] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [createForm, setCreateForm] = useState({
-    province: MIMAROPA_PROVINCES[0], // default first province
+    province: MIMAROPA_PROVINCES[0],
     municipality: '',
     name: '',
     date_accredited: '',
@@ -155,6 +161,7 @@ const RcefAccredited = () => {
     expirationYear: 'all'
   });
 
+  // ---------- Data Fetching ----------
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -178,233 +185,9 @@ const RcefAccredited = () => {
     fetchData();
   }, []);
 
-  // ---------- Analytics ----------
-  const stats = useMemo(() => {
-    const totalAssociations = data.length;
-    const totalMale = data.reduce((acc, item) => acc + (item.male_members || 0), 0);
-    const totalFemale = data.reduce((acc, item) => acc + (item.female_members || 0), 0);
-    const totalMembers = data.reduce((acc, item) => acc + (item.total_members || 0), 0);
-    const totalArea = data.reduce((acc, item) => acc + (parseFloat(item.area_covered) || 0), 0).toFixed(2);
-    const provinces = [...new Set(data.map(item => normalizeProvince(item.province)).filter(Boolean))].length;
-    const withSeeds = data.filter(item => item.interventions?.seeds).length;
-    const withMech = data.filter(item => item.interventions?.mech).length;
-
-    return {
-      totalAssociations,
-      totalMale,
-      totalFemale,
-      totalMembers,
-      totalArea,
-      provinces,
-      withSeeds,
-      withMech
-    };
-  }, [data]);
-
-  // ---------- Province dropdown options ----------
-  const provinceOptions = useMemo(() => {
-    const normSet = new Set();
-    data.forEach(item => {
-      if (item.province) {
-        normSet.add(normalizeProvince(item.province));
-      }
-    });
-    const mimaropaOrder = [...MIMAROPA_PROVINCES];
-    const sorted = Array.from(normSet).sort((a, b) => {
-      const idxA = mimaropaOrder.indexOf(a);
-      const idxB = mimaropaOrder.indexOf(b);
-      if (idxA === -1 && idxB === -1) return a.localeCompare(b);
-      if (idxA === -1) return 1;
-      if (idxB === -1) return -1;
-      return idxA - idxB;
-    });
-    return sorted;
-  }, [data]);
-
-  // ---------- Year options for filtering ----------
-  const accreditedYearOptions = useMemo(() => {
-    const years = data
-      .map(item => getYearFromDate(item.date_accredited))
-      .filter(year => year !== null)
-      .sort((a, b) => b - a);
-    return [...new Set(years)];
-  }, [data]);
-
-  const expirationYearOptions = useMemo(() => {
-    const years = data
-      .map(item => getYearFromDate(item.date_expiration))
-      .filter(year => year !== null)
-      .sort((a, b) => b - a);
-    return [...new Set(years)];
-  }, [data]);
-
-  // ---------- Auto‑increment no for a given municipality ----------
-  const getNextSequenceNumber = async (province, municipality) => {
-    if (!province || !municipality) return '1';
-    try {
-      const q = query(
-        collection(db, 'rcef'),
-        where('province', '==', province),
-        where('municipality', '==', municipality),
-        orderBy('no', 'desc'),
-        limit(1)
-      );
-      const querySnapshot = await getDocs(q);
-      if (querySnapshot.empty) {
-        return '1';
-      }
-      const lastNo = querySnapshot.docs[0].data().no;
-      const lastNum = parseInt(lastNo, 10);
-      return isNaN(lastNum) ? '1' : (lastNum + 1).toString();
-    } catch (error) {
-      console.error('Error getting next sequence number:', error);
-      return '1';
-    }
-  };
-
-  // ---------- Find corresponding fullcso document by rcefId ----------
-  const findFullCsoByRcefId = async (rcefId) => {
-    const q = query(collection(db, 'fullcso-farmers'), where('rcefId', '==', rcefId), limit(1));
-    const snapshot = await getDocs(q);
-    return snapshot.empty ? null : { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
-  };
-
-  // ---------- Edit / Delete / Create Handlers ----------
-  const handleEdit = (row) => {
-    setSelectedApplication(row);
-    setEditForm(row);
-    setShowEditModal(true);
-  };
-
-  const handleDelete = async () => {
-    if (!selectedApplication) return;
-    try {
-      // Delete from rcef
-      await deleteDoc(doc(db, 'rcef', selectedApplication.id));
-
-      // Delete corresponding fullcso document if exists
-      const fullCsoDoc = await findFullCsoByRcefId(selectedApplication.id);
-      if (fullCsoDoc) {
-        await deleteDoc(doc(db, 'fullcso-farmers', fullCsoDoc.id));
-      }
-
-      setData(data.filter(item => item.id !== selectedApplication.id));
-      setSuccess(`Application "${selectedApplication.name}" deleted successfully.`);
-      setShowDeleteModal(false);
-      setSelectedApplication(null);
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (error) {
-      console.error('Delete error: ', error);
-      setError('Failed to delete record. Please try again.');
-    }
-  };
-
-  const handleUpdate = async () => {
-    try {
-      const rcefRef = doc(db, 'rcef', selectedApplication.id);
-      await updateDoc(rcefRef, editForm);
-
-      // Update corresponding fullcso document
-      const fullCsoDoc = await findFullCsoByRcefId(selectedApplication.id);
-      if (fullCsoDoc) {
-        const fullCsoRef = doc(db, 'fullcso-farmers', fullCsoDoc.id);
-        // Copy all fields except id, rcefId, source (they remain unchanged)
-        const { id, rcefId, source, ...updateData } = editForm;
-        await updateDoc(fullCsoRef, updateData);
-      }
-
-      setData(data.map(item => (item.id === selectedApplication.id ? { ...item, ...editForm } : item)));
-      setSuccess('Application updated successfully!');
-      setShowEditModal(false);
-      setSelectedApplication(null);
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (error) {
-      console.error('Update error: ', error);
-      setError('Failed to update record. Please try again.');
-    }
-  };
-
-  const handleCreate = async () => {
-    try {
-      // Basic validation
-      if (!createForm.name) {
-        setError('Association name is required.');
-        return;
-      }
-      if (!createForm.province || !createForm.municipality) {
-        setError('Province and municipality are required.');
-        return;
-      }
-
-      // Get next sequence number
-      const nextNo = await getNextSequenceNumber(createForm.province, createForm.municipality);
-
-      // Prepare new record
-      const newRecord = {
-        ...createForm,
-        no: nextNo,
-        // Ensure numeric fields are numbers
-        male_members: createForm.male_members ? Number(createForm.male_members) : 0,
-        female_members: createForm.female_members ? Number(createForm.female_members) : 0,
-        total_members: createForm.total_members ? Number(createForm.total_members) : 0,
-        area_covered: createForm.area_covered ? createForm.area_covered : '',
-      };
-
-      // Add to rcef collection
-      const rcefDocRef = await addDoc(collection(db, 'rcef'), newRecord);
-      const rcefId = rcefDocRef.id;
-
-      // Add to fullcso-farmers collection with source info
-      const fullCsoRecord = {
-        ...newRecord,
-        source: 'rcef',
-        rcefId: rcefId,
-      };
-      await addDoc(collection(db, 'fullcso-farmers'), fullCsoRecord);
-
-      // Update local state
-      setData([...data, { id: rcefId, ...newRecord }]);
-      setSuccess(`Application "${createForm.name}" created successfully.`);
-      setShowCreateModal(false);
-      setCreateForm({
-        province: MIMAROPA_PROVINCES[0],
-        municipality: '',
-        name: '',
-        date_accredited: '',
-        date_expiration: '',
-        date_application_received: '',
-        type_fca: '',
-        male_members: '',
-        female_members: '',
-        total_members: '',
-        area_covered: '',
-        address: '',
-        contact_person: '',
-        contact_no: '',
-        remarks: '',
-        certificate_of_accreditation: '',
-        submitted_documents: '',
-        interventions: { seeds: false, mech: false, credit: false, extn: false }
-      });
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (error) {
-      console.error('Create error: ', error);
-      setError('Failed to create record. Please try again.');
-    }
-  };
-
-  const openDeleteModal = (row) => {
-    setSelectedApplication(row);
-    setShowDeleteModal(true);
-  };
-
-  const handleView = (row) => {
-    setSelectedApplication(row);
-    setShowViewModal(true);
-  };
-
-  // ---------- Filter & Search ----------
-  const filteredData = useMemo(() => {
+  // ---------- Grouping Logic (with normalization) ----------
+  const groupedData = useMemo(() => {
+    // First, apply filters to original data
     let filtered = [...data];
 
     if (searchTerm) {
@@ -440,10 +223,394 @@ const RcefAccredited = () => {
       });
     }
 
-    return filtered;
+    // Group by normalized name + province + municipality
+    const groups = new Map();
+    filtered.forEach(item => {
+      const normalizedName = normalizeString(item.name);
+      const normalizedProv = normalizeProvince(item.province);
+      const normalizedMun = normalizeString(item.municipality);
+      const key = `${normalizedName}|${normalizedProv}|${normalizedMun}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          id: key, // composite key
+          name: normalizedName,
+          province: normalizedProv,
+          municipality: normalizedMun,
+          // Aggregated fields
+          contact_person: null,
+          contact_no: null,
+          male_members: 0,
+          female_members: 0,
+          total_members: 0,
+          area_covered: 0,
+          type_fca: new Set(),
+          interventions: { seeds: false, mech: false, credit: false, extn: false },
+          certificates: new Set(),
+          documents: new Set(),
+          remarks: new Set(),
+          records: [] // store original records
+        });
+      }
+      const group = groups.get(key);
+      group.records.push(item);
+
+      // Sum numeric fields
+      group.male_members += item.male_members || 0;
+      group.female_members += item.female_members || 0;
+      group.total_members += item.total_members || 0;
+      group.area_covered += parseFloat(item.area_covered) || 0;
+
+      // Type
+      if (item.type_fca) group.type_fca.add(item.type_fca);
+
+      // Interventions (OR)
+      if (item.interventions) {
+        group.interventions.seeds = group.interventions.seeds || item.interventions.seeds;
+        group.interventions.mech = group.interventions.mech || item.interventions.mech;
+        group.interventions.credit = group.interventions.credit || item.interventions.credit;
+        group.interventions.extn = group.interventions.extn || item.interventions.extn;
+      }
+
+      // Contact info – take the latest (by date_accredited)
+      if (item.contact_person) group.contact_person = item.contact_person;
+      if (item.contact_no) group.contact_no = item.contact_no;
+
+      // Certificates, documents, remarks
+      if (item.certificate_of_accreditation) group.certificates.add(item.certificate_of_accreditation);
+      if (item.submitted_documents) group.documents.add(item.submitted_documents);
+      if (item.remarks) group.remarks.add(item.remarks);
+    });
+
+    // Convert sets to strings for display
+    const result = Array.from(groups.values()).map(group => {
+      // Sort records by date_accredited descending (most recent first)
+      const sortedRecords = [...group.records].sort((a, b) => {
+        const dateA = a.date_accredited ? new Date(a.date_accredited) : new Date(0);
+        const dateB = b.date_accredited ? new Date(b.date_accredited) : new Date(0);
+        return dateB - dateA;
+      });
+      return {
+        ...group,
+        records: sortedRecords,
+        type_fca: Array.from(group.type_fca).join(', ') || '—',
+        certificates: Array.from(group.certificates).join(', ') || '—',
+        documents: Array.from(group.documents).join(', ') || '—',
+        remarks: Array.from(group.remarks).join(', ') || '—',
+      };
+    });
+
+    // Sort groups by name
+    result.sort((a, b) => a.name.localeCompare(b.name));
+    return result;
   }, [data, searchTerm, filters]);
 
-  // ---------- Table Columns ----------
+  // ---------- Stats (based on original data) ----------
+  const stats = useMemo(() => {
+    const totalAssociations = data.length;
+    const totalMale = data.reduce((acc, item) => acc + (item.male_members || 0), 0);
+    const totalFemale = data.reduce((acc, item) => acc + (item.female_members || 0), 0);
+    const totalMembers = data.reduce((acc, item) => acc + (item.total_members || 0), 0);
+    const totalArea = data.reduce((acc, item) => acc + (parseFloat(item.area_covered) || 0), 0).toFixed(2);
+    const provinces = [...new Set(data.map(item => normalizeProvince(item.province)).filter(Boolean))].length;
+    const withSeeds = data.filter(item => item.interventions?.seeds).length;
+    const withMech = data.filter(item => item.interventions?.mech).length;
+
+    return {
+      totalAssociations,
+      totalMale,
+      totalFemale,
+      totalMembers,
+      totalArea,
+      provinces,
+      withSeeds,
+      withMech
+    };
+  }, [data]);
+
+  // ---------- Filter options (from original data) ----------
+  const provinceOptions = useMemo(() => {
+    const normSet = new Set();
+    data.forEach(item => {
+      if (item.province) {
+        normSet.add(normalizeProvince(item.province));
+      }
+    });
+    const mimaropaOrder = [...MIMAROPA_PROVINCES];
+    const sorted = Array.from(normSet).sort((a, b) => {
+      const idxA = mimaropaOrder.indexOf(a);
+      const idxB = mimaropaOrder.indexOf(b);
+      if (idxA === -1 && idxB === -1) return a.localeCompare(b);
+      if (idxA === -1) return 1;
+      if (idxB === -1) return -1;
+      return idxA - idxB;
+    });
+    return sorted;
+  }, [data]);
+
+  const accreditedYearOptions = useMemo(() => {
+    const years = data
+      .map(item => getYearFromDate(item.date_accredited))
+      .filter(year => year !== null)
+      .sort((a, b) => b - a);
+    return [...new Set(years)];
+  }, [data]);
+
+  const expirationYearOptions = useMemo(() => {
+    const years = data
+      .map(item => getYearFromDate(item.date_expiration))
+      .filter(year => year !== null)
+      .sort((a, b) => b - a);
+    return [...new Set(years)];
+  }, [data]);
+
+  // ---------- Auto‑increment number ----------
+  const getNextSequenceNumber = async (province, municipality) => {
+    if (!province || !municipality) return '1';
+    try {
+      const q = query(
+        collection(db, 'rcef'),
+        where('province', '==', province),
+        where('municipality', '==', municipality),
+        orderBy('no', 'desc'),
+        limit(1)
+      );
+      const querySnapshot = await getDocs(q);
+      if (querySnapshot.empty) {
+        return '1';
+      }
+      const lastNo = querySnapshot.docs[0].data().no;
+      const lastNum = parseInt(lastNo, 10);
+      return isNaN(lastNum) ? '1' : (lastNum + 1).toString();
+    } catch (error) {
+      console.error('Error getting next sequence number:', error);
+      return '1';
+    }
+  };
+
+  // ---------- CRUD Helpers ----------
+  const findFullCsoByRcefId = async (rcefId) => {
+    const q = query(collection(db, 'fullcso-farmers'), where('rcefId', '==', rcefId), limit(1));
+    const snapshot = await getDocs(q);
+    return snapshot.empty ? null : { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+  };
+
+  // Edit a single record (opens modal)
+  const handleEdit = (record) => {
+    setSelectedApplication(record);
+    setEditForm(record);
+    setShowEditModal(true);
+  };
+
+  // Delete a single record
+  const handleDelete = async (id, name) => {
+    if (!id) return;
+    try {
+      await deleteDoc(doc(db, 'rcef', id));
+
+      const fullCsoDoc = await findFullCsoByRcefId(id);
+      if (fullCsoDoc) {
+        await deleteDoc(doc(db, 'fullcso-farmers', fullCsoDoc.id));
+      }
+
+      setData(data.filter(item => item.id !== id));
+      setSuccess(`Application "${name}" deleted successfully.`);
+      setShowDeleteModal(false);
+      setSelectedApplication(null);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error) {
+      console.error('Delete error: ', error);
+      setError('Failed to delete record. Please try again.');
+    }
+  };
+
+  // Delete entire group (all records with same name/province/municipality)
+  const handleDeleteGroup = async (group) => {
+    if (!group.records || group.records.length === 0) return;
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete ALL ${group.records.length} accreditation records for "${group.name}"? This action cannot be undone.`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      // Delete each record in the group
+      for (const record of group.records) {
+        await deleteDoc(doc(db, 'rcef', record.id));
+        const fullCsoDoc = await findFullCsoByRcefId(record.id);
+        if (fullCsoDoc) {
+          await deleteDoc(doc(db, 'fullcso-farmers', fullCsoDoc.id));
+        }
+      }
+      setData(data.filter(item => !group.records.some(r => r.id === item.id)));
+      setSuccess(`All records for "${group.name}" deleted successfully.`);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error) {
+      console.error('Group delete error: ', error);
+      setError('Failed to delete group. Please try again.');
+    }
+  };
+
+  const handleUpdate = async () => {
+    try {
+      const rcefRef = doc(db, 'rcef', selectedApplication.id);
+      await updateDoc(rcefRef, editForm);
+
+      const fullCsoDoc = await findFullCsoByRcefId(selectedApplication.id);
+      if (fullCsoDoc) {
+        const fullCsoRef = doc(db, 'fullcso-farmers', fullCsoDoc.id);
+        const { id, rcefId, source, ...updateData } = editForm;
+        await updateDoc(fullCsoRef, updateData);
+      }
+
+      setData(data.map(item => (item.id === selectedApplication.id ? { ...item, ...editForm } : item)));
+      setSuccess('Application updated successfully!');
+      setShowEditModal(false);
+      setSelectedApplication(null);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error) {
+      console.error('Update error: ', error);
+      setError('Failed to update record. Please try again.');
+    }
+  };
+
+  const handleCreate = async () => {
+    try {
+      if (!createForm.name) {
+        setError('Association name is required.');
+        return;
+      }
+      if (!createForm.province || !createForm.municipality) {
+        setError('Province and municipality are required.');
+        return;
+      }
+
+      const nextNo = await getNextSequenceNumber(createForm.province, createForm.municipality);
+
+      const newRecord = {
+        ...createForm,
+        no: nextNo,
+        male_members: Number(createForm.male_members) || 0,
+        female_members: Number(createForm.female_members) || 0,
+        total_members: Number(createForm.total_members) || 0,
+        area_covered: createForm.area_covered || '',
+      };
+
+      const rcefDocRef = await addDoc(collection(db, 'rcef'), newRecord);
+      const rcefId = rcefDocRef.id;
+
+      const fullCsoRecord = {
+        ...newRecord,
+        source: 'rcef',
+        rcefId: rcefId,
+      };
+      await addDoc(collection(db, 'fullcso-farmers'), fullCsoRecord);
+
+      setData([...data, { id: rcefId, ...newRecord }]);
+      setSuccess(`Application "${createForm.name}" created successfully.`);
+      setShowCreateModal(false);
+      setCreateForm({
+        province: MIMAROPA_PROVINCES[0],
+        municipality: '',
+        name: '',
+        date_accredited: '',
+        date_expiration: '',
+        date_application_received: '',
+        type_fca: '',
+        male_members: '',
+        female_members: '',
+        total_members: '',
+        area_covered: '',
+        address: '',
+        contact_person: '',
+        contact_no: '',
+        remarks: '',
+        certificate_of_accreditation: '',
+        submitted_documents: '',
+        interventions: { seeds: false, mech: false, credit: false, extn: false }
+      });
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error) {
+      console.error('Create error: ', error);
+      setError('Failed to create record. Please try again.');
+    }
+  };
+
+  const openDeleteModal = (record) => {
+    setSelectedApplication(record);
+    setShowDeleteModal(true);
+  };
+
+  const handleView = (row) => {
+    setSelectedApplication(row);
+    setShowViewModal(true);
+  };
+
+  // ---------- Expandable Row Component ----------
+  const ExpandedComponent = ({ data: group }) => {
+    const records = group.records;
+    return (
+      <div className="p-4 bg-gray-50">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Accreditation Period</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Members</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Interventions</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+               </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+              {records.map(record => (
+                <tr key={record.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 text-sm">
+                    <div>Acc: {formatDate(record.date_accredited)}</div>
+                    <div>Exp: {formatDate(record.date_expiration)}</div>
+                  </td>
+                  <td className="px-4 py-2 text-sm">{record.type_fca || '—'}</td>
+                  <td className="px-4 py-2 text-sm">
+                    M: {record.male_members || 0} | F: {record.female_members || 0} | T: {record.total_members || 0}
+                  </td>
+                  <td className="px-4 py-2 text-sm">
+                    <div className="flex space-x-1">
+                      {record.interventions?.seeds && <span className="px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded-full">S</span>}
+                      {record.interventions?.mech && <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded-full">M</span>}
+                      {record.interventions?.credit && <span className="px-2 py-0.5 bg-purple-100 text-purple-800 text-xs rounded-full">C</span>}
+                      {record.interventions?.extn && <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 text-xs rounded-full">E</span>}
+                    </div>
+                  </td>
+                  <td className="px-4 py-2 text-sm">
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => {
+                          setSelectedApplication(record);
+                          setEditForm(record);
+                          setShowEditModal(true);
+                        }}
+                        className="p-1 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded"
+                        title="Edit this accreditation"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => openDeleteModal(record)}
+                        className="p-1 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded"
+                        title="Delete this accreditation"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  // ---------- Table Columns (for grouped rows) ----------
   const columns = [
     {
       name: 'Association',
@@ -453,7 +620,7 @@ const RcefAccredited = () => {
       cell: row => (
         <div>
           <div className="font-semibold text-gray-900">{row.name || '—'}</div>
-          <div className="text-xs text-gray-500">{normalizeProvince(row.province)} • {row.municipality}</div>
+          <div className="text-xs text-gray-500">{row.province} • {row.municipality}</div>
         </div>
       )
     },
@@ -476,7 +643,7 @@ const RcefAccredited = () => {
       cell: row => (
         <div className="flex items-center">
           <Users className="h-3 w-3 mr-1 text-gray-500" />
-          {row.total_members || 0}
+          {row.total_members}
         </div>
       )
     },
@@ -500,19 +667,22 @@ const RcefAccredited = () => {
       name: 'Interventions',
       cell: row => (
         <div className="flex space-x-1">
-          {row.interventions?.seeds && <span className="px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded-full">S</span>}
-          {row.interventions?.mech && <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded-full">M</span>}
-          {row.interventions?.credit && <span className="px-2 py-0.5 bg-purple-100 text-purple-800 text-xs rounded-full">C</span>}
-          {row.interventions?.extn && <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 text-xs rounded-full">E</span>}
+          {row.interventions.seeds && <span className="px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded-full">S</span>}
+          {row.interventions.mech && <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded-full">M</span>}
+          {row.interventions.credit && <span className="px-2 py-0.5 bg-purple-100 text-purple-800 text-xs rounded-full">C</span>}
+          {row.interventions.extn && <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 text-xs rounded-full">E</span>}
         </div>
       )
     },
     {
-      name: 'Dates',
+      name: 'Accreditation Periods',
       cell: row => (
-        <div className="text-xs">
-          <div>Acc: {formatDate(row.date_accredited)}</div>
-          <div>Exp: {formatDate(row.date_expiration)}</div>
+        <div className="text-xs space-y-1">
+          {row.records.map(record => (
+            <div key={record.id}>
+              {formatDate(record.date_accredited)} → {formatDate(record.date_expiration)}
+            </div>
+          ))}
         </div>
       )
     },
@@ -521,37 +691,51 @@ const RcefAccredited = () => {
       cell: row => (
         <div className="flex items-center space-x-2">
           <button
-            onClick={() => handleView(row)}
-            className="p-1.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            title="View Details"
-          >
-            <Eye className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => handleEdit(row)}
+            onClick={(e) => {
+              e.stopPropagation();
+              // Edit the most recent record in the group
+              const latestRecord = row.records[0];
+              setSelectedApplication(latestRecord);
+              setEditForm(latestRecord);
+              setShowEditModal(true);
+            }}
             className="p-1.5 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-            title="Edit"
+            title="Edit latest accreditation"
           >
             <Edit className="h-4 w-4" />
           </button>
           <button
-            onClick={() => openDeleteModal(row)}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDeleteGroup(row);
+            }}
             className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            title="Delete"
+            title="Delete all records for this association"
           >
             <Trash2 className="h-4 w-4" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleView(row);
+            }}
+            className="p-1.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            title="View Details"
+          >
+            <Eye className="h-4 w-4" />
           </button>
         </div>
       ),
       ignoreRowClick: true,
       allowOverflow: true,
       button: true,
-      width: '140px',
+      width: '120px',
     },
   ];
 
-  // ---------- Excel Export (unchanged) ----------
+  // ---------- Export to Excel (unchanged) ----------
   const exportToExcel = async () => {
+    // (same as before, unchanged)
     try {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Farmers Cooperative');
@@ -639,12 +823,11 @@ const RcefAccredited = () => {
         });
       };
 
-      // Group data by province and municipality
+      // Group original data for export (not grouped)
       const grouped = {};
       data.forEach(item => {
         const prov = normalizeProvince(item.province) || 'Unknown';
-        const mun = item.municipality || 'Unknown';
-
+        const mun = normalizeString(item.municipality) || 'Unknown';
         if (!grouped[prov]) {
           grouped[prov] = {
             originalName: prov,
@@ -732,20 +915,7 @@ const RcefAccredited = () => {
     }
   };
 
-  // ---------- Checkbox Field Component ----------
-  const CheckboxField = ({ name, label, checked, onChange }) => (
-    <label className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded-lg cursor-pointer">
-      <input
-        type="checkbox"
-        name={name}
-        checked={checked}
-        onChange={onChange}
-        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-      />
-      <span className="text-sm text-gray-700">{label}</span>
-    </label>
-  );
-
+  // ---------- Form handlers ----------
   const handleEditChange = (e) => {
     const { name, value, type, checked } = e.target;
     if (name.startsWith('interventions.')) {
@@ -778,6 +948,20 @@ const RcefAccredited = () => {
     }
   };
 
+  const CheckboxField = ({ name, label, checked, onChange }) => (
+    <label className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded-lg cursor-pointer">
+      <input
+        type="checkbox"
+        name={name}
+        checked={checked}
+        onChange={onChange}
+        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+      />
+      <span className="text-sm text-gray-700">{label}</span>
+    </label>
+  );
+
+  // ---------- Render ----------
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       {/* Header */}
@@ -961,7 +1145,7 @@ const RcefAccredited = () => {
 
         <div className="mt-4 flex items-center justify-between">
           <div className="text-gray-600">
-            Showing <span className="font-semibold">{filteredData.length}</span> of <span className="font-semibold">{data.length}</span> records
+            Showing <span className="font-semibold">{groupedData.length}</span> associations (from <span className="font-semibold">{data.length}</span> total accreditation records)
             {searchTerm && (
               <span className="ml-2 text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
                 Searching: "{searchTerm}"
@@ -974,11 +1158,11 @@ const RcefAccredited = () => {
         </div>
       </div>
 
-      {/* Data Table */}
+      {/* Data Table with Expandable Rows */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <DataTable
           columns={columns}
-          data={filteredData}
+          data={groupedData}
           progressPending={loading}
           pagination
           paginationPerPage={10}
@@ -986,6 +1170,9 @@ const RcefAccredited = () => {
           highlightOnHover
           striped
           responsive
+          expandableRows
+          expandableRowsComponent={ExpandedComponent}
+          expandableRowExpanded={row => row.expanded || false}
           onRowClicked={handleView}
           noDataComponent={
             <div className="p-12 text-center">
@@ -1038,7 +1225,7 @@ const RcefAccredited = () => {
         </div>
       </div>
 
-      {/* ---------- CREATE MODAL ---------- */}
+      {/* ---------- CREATE MODAL (unchanged) ---------- */}
       <Modal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
@@ -1286,7 +1473,6 @@ const RcefAccredited = () => {
       >
         <form onSubmit={(e) => { e.preventDefault(); handleUpdate(); }} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Province dropdown in edit (still dropdown) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Province</label>
               <select
@@ -1513,7 +1699,7 @@ const RcefAccredited = () => {
         </form>
       </Modal>
 
-      {/* ---------- VIEW MODAL ---------- */}
+      {/* ---------- VIEW MODAL (shows group details) ---------- */}
       <Modal
         isOpen={showViewModal}
         onClose={() => setShowViewModal(false)}
@@ -1530,10 +1716,7 @@ const RcefAccredited = () => {
                   </h2>
                   <div className="flex items-center mt-2 space-x-3">
                     <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
-                      No. {selectedApplication.no || '—'}
-                    </span>
-                    <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-medium">
-                      {normalizeProvince(selectedApplication.province)}
+                      {selectedApplication.province}
                     </span>
                     <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
                       {selectedApplication.type_fca || '—'}
@@ -1573,10 +1756,10 @@ const RcefAccredited = () => {
                 <div className="space-y-3">
                   <div>
                     <p className="text-sm text-gray-500">Province / Municipality</p>
-                    <p className="font-medium text-black">{normalizeProvince(selectedApplication.province)} • {selectedApplication.municipality}</p>
+                    <p className="font-medium text-black">{selectedApplication.province} • {selectedApplication.municipality}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Members</p>
+                    <p className="text-sm text-gray-500">Members (Total aggregated)</p>
                     <div className="flex items-center">
                       <Users className="h-4 w-4 mr-2 text-purple-600" />
                       <p className="font-medium text-black">
@@ -1585,27 +1768,27 @@ const RcefAccredited = () => {
                     </div>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Area Covered</p>
+                    <p className="text-sm text-gray-500">Area Covered (aggregated)</p>
                     <p className="font-medium text-black">{selectedApplication.area_covered || 0} ha</p>
                   </div>
                 </div>
               </div>
 
               <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Dates</h3>
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm text-gray-500">Date Accredited</p>
-                    <p className="font-medium text-black">{formatDate(selectedApplication.date_accredited)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Date Expiration</p>
-                    <p className="font-medium text-black">{formatDate(selectedApplication.date_expiration)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Application Received</p>
-                    <p className="font-medium text-black">{formatDate(selectedApplication.date_application_received)}</p>
-                  </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Accreditation History</h3>
+                <div className="space-y-2">
+                  {selectedApplication.records?.map(record => (
+                    <div key={record.id} className="border-b border-gray-100 pb-2">
+                      <div className="flex justify-between text-sm">
+                        <span>Accredited: {formatDate(record.date_accredited)}</span>
+                        <span>Expires: {formatDate(record.date_expiration)}</span>
+                      </div>
+                      {record.type_fca && <div className="text-xs text-gray-500">Type: {record.type_fca}</div>}
+                    </div>
+                  ))}
+                  {(!selectedApplication.records || selectedApplication.records.length === 0) && (
+                    <p className="text-gray-500">No accreditation periods found.</p>
+                  )}
                 </div>
               </div>
 
@@ -1631,7 +1814,7 @@ const RcefAccredited = () => {
                 </div>
               </div>
 
-              {selectedApplication.remarks && (
+              {selectedApplication.remarks && selectedApplication.remarks !== '—' && (
                 <div className="md:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Remarks</h3>
                   <div className="bg-gray-50 rounded-lg p-4">
@@ -1642,32 +1825,13 @@ const RcefAccredited = () => {
             </div>
 
             <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
-              <button
-                onClick={() => {
-                  setShowViewModal(false);
-                  handleEdit(selectedApplication);
-                }}
-                className="px-5 py-2.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-colors"
-              >
-                <Edit className="h-4 w-4 inline mr-2" />
-                Edit Application
-              </button>
-              <button
-                onClick={() => {
-                  setShowViewModal(false);
-                  openDeleteModal(selectedApplication);
-                }}
-                className="px-5 py-2.5 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 transition-colors"
-              >
-                <Trash2 className="h-4 w-4 inline mr-2" />
-                Delete Application
-              </button>
+              {/* Actions left empty as they are handled elsewhere */}
             </div>
           </div>
         )}
       </Modal>
 
-      {/* ---------- DELETE MODAL ---------- */}
+      {/* ---------- DELETE MODAL (for individual records) ---------- */}
       <Modal
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
@@ -1678,10 +1842,10 @@ const RcefAccredited = () => {
           <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
             <Trash2 className="h-8 w-8 text-red-600" />
           </div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">Delete Accredited Application</h3>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">Delete Accreditation Record</h3>
           <p className="text-gray-600 mb-6">
-            Are you sure you want to delete the application for{' '}
-            <span className="font-semibold">{selectedApplication?.name}</span>? This action cannot be undone.
+            Are you sure you want to delete the accreditation for{' '}
+            <span className="font-semibold">{selectedApplication?.name}</span> with date {selectedApplication?.date_accredited ? formatDate(selectedApplication.date_accredited) : ''}? This action cannot be undone.
           </p>
           <div className="flex justify-center space-x-3">
             <button
@@ -1691,7 +1855,7 @@ const RcefAccredited = () => {
               Cancel
             </button>
             <button
-              onClick={handleDelete}
+              onClick={() => handleDelete(selectedApplication.id, selectedApplication.name)}
               className="px-6 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
             >
               Delete Record

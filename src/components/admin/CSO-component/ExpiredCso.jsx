@@ -7,7 +7,8 @@ import {
   deleteDoc,
   doc,
   query,
-  serverTimestamp
+  serverTimestamp,
+  setDoc,                // <-- added for fullcso‑farmers sync
 } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import * as XLSXStyle from 'xlsx-js-style';
@@ -41,7 +42,7 @@ import {
   Clock,
   Archive,
   RotateCcw,
-  Save
+  Save,
 } from 'lucide-react';
 import { db } from '../../../config/firebase';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -53,7 +54,7 @@ const formatDate = (dateString) => {
   return date.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
-    day: 'numeric'
+    day: 'numeric',
   });
 };
 
@@ -84,6 +85,118 @@ const formatArchivedDate = (record) => {
   return date.getTime() === 0 ? 'N/A' : date.toLocaleDateString();
 };
 
+// ---------- Helper: Extract province and municipality from address ----------
+const parseAddress = (address) => {
+  if (!address) return { province: '', municipality: '' };
+  const parts = address.split(',').map(s => s.trim());
+  if (parts.length >= 3) {
+    return {
+      province: parts[parts.length - 1],
+      municipality: parts[parts.length - 2],
+    };
+  } else if (parts.length === 2) {
+    return {
+      province: parts[1],
+      municipality: parts[0],
+    };
+  } else {
+    return { province: '', municipality: '' };
+  }
+};
+
+// ---------- Determine specific type from name (matches fullcso‑farmers format) ----------
+const getTypeFromName = (name) => {
+  const lower = (name || '').toLowerCase();
+  if (lower.includes('cooperative')) return 'Cooperative';
+  if (lower.includes('irrigators association') || lower.includes('irrigators'))
+    return 'Irrigators Association';
+  if (lower.includes('farmers association') || lower.includes('farmers'))
+    return 'Farmers Association';
+  return 'Association'; // default
+};
+
+// ---------- Advanced parser for no_of_members ----------
+const parseMemberString = (memberStr) => {
+  if (!memberStr) return { total: 0, male: 0, female: 0 };
+
+  let total = 0;
+  let male = 0;
+  let female = 0;
+
+  const totalMatch = memberStr.match(/(\d+[\d,]*)\s*(?:members?|total|:)/i);
+  if (totalMatch) {
+    total = parseInt(totalMatch[1].replace(/,/g, ''), 10);
+  }
+
+  const maleMatch = memberStr.match(/[Mm][:\-\s]*(\d+)/);
+  if (maleMatch) {
+    male = parseInt(maleMatch[1], 10);
+  }
+
+  const femaleMatch = memberStr.match(/[Ff][:\-\s]*(\d+)/);
+  if (femaleMatch) {
+    female = parseInt(femaleMatch[1], 10);
+  }
+
+  if (total === 0 && (male > 0 || female > 0)) {
+    total = male + female;
+  }
+
+  if (total === 0) {
+    const anyNumber = memberStr.match(/^(\d+)/);
+    if (anyNumber) {
+      total = parseInt(anyNumber[1], 10);
+    }
+  }
+
+  return { total, male, female };
+};
+
+// ---------- Map CSO record to fullcso‑farmers format ----------
+const mapCsoToFarmers = (csoRecord) => {
+  const { province: parsedProvince, municipality: parsedMunicipality } = parseAddress(
+    csoRecord.address || ''
+  );
+  const { total, male, female } = parseMemberString(csoRecord.no_of_members || '');
+
+  const interventions = {
+    seeds: false,
+    mech: false,
+    credit: false,
+    extn: false,
+  };
+
+  return {
+    province: csoRecord.province || parsedProvince,
+    municipality: parsedMunicipality,
+    no: csoRecord.no ? String(csoRecord.no) : null,
+    name: csoRecord.name_of_association || '',
+    date_application_received: null,
+    date_accredited: csoRecord.date_of_issuance || null,
+    date_expiration: csoRecord.date_of_expiration || null,
+    type_fca: getTypeFromName(csoRecord.name_of_association),
+    male_members: male,
+    female_members: female,
+    total_members: total,
+    area_covered: null,
+    address: csoRecord.address || '',
+    contact_person: csoRecord.contact_person || '',
+    contact_no: csoRecord.contact_number || null,
+    interventions: interventions,
+    remarks: null,
+    certificate_of_accreditation: csoRecord.certificate_of_accreditation || null,
+    submitted_documents: null,
+    createdAt: serverTimestamp(),
+  };
+};
+
+// ---------- Sync to fullcso‑farmers collection ----------
+const syncToCsoFarmers = async (csoId, csoData) => {
+  if (!csoId) return;
+  const farmersData = mapCsoToFarmers(csoData);
+  await setDoc(doc(db, 'fullcso-farmers', csoId), farmersData, { merge: true });
+};
+
 // ---------- DataTable Component (unchanged but with premium styling) ----------
 const DataTable = ({
   columns,
@@ -95,13 +208,15 @@ const DataTable = ({
   sortDirection,
   pagination,
   onPageChange,
-  onRowsPerPageChange
+  onRowsPerPageChange,
 }) => {
   const handleRowClick = (row, e) => {
-    if (e.target.tagName === 'BUTTON' ||
-        e.target.tagName === 'A' ||
-        e.target.closest('button') ||
-        e.target.closest('a')) {
+    if (
+      e.target.tagName === 'BUTTON' ||
+      e.target.tagName === 'A' ||
+      e.target.closest('button') ||
+      e.target.closest('a')
+    ) {
       return;
     }
     onRowClick(row);
@@ -148,7 +263,9 @@ const DataTable = ({
                     <div className="p-4 bg-red-50 rounded-full mb-4">
                       <Archive className="h-12 w-12 text-red-400" />
                     </div>
-                    <p className="text-gray-700 text-lg font-semibold">No expired records found</p>
+                    <p className="text-gray-700 text-lg font-semibold">
+                      No expired records found
+                    </p>
                     <p className="text-gray-400 mt-1">All CSOs are currently active</p>
                   </div>
                 </td>
@@ -164,10 +281,7 @@ const DataTable = ({
                   onClick={(e) => handleRowClick(row, e)}
                 >
                   {columns.map((column) => (
-                    <td
-                      key={column.key}
-                      className="px-6 py-4 whitespace-nowrap text-sm"
-                    >
+                    <td key={column.key} className="px-6 py-4 whitespace-nowrap text-sm">
                       {column.render ? column.render(row) : row[column.key]}
                     </td>
                   ))}
@@ -299,9 +413,7 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
               </button>
             </div>
           </div>
-          <div className="max-h-[70vh] overflow-y-auto p-6">
-            {children}
-          </div>
+          <div className="max-h-[70vh] overflow-y-auto p-6">{children}</div>
         </motion.div>
       </div>
     </AnimatePresence>
@@ -338,7 +450,7 @@ const ExpiredCso = () => {
     accreditation_no: '',
     date_of_issuance: '',
     date_of_expiration: '',
-    certificate_of_accreditation: ''
+    certificate_of_accreditation: '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -346,22 +458,22 @@ const ExpiredCso = () => {
   const [filters, setFilters] = useState({
     scope: 'all',
     hasCertificate: 'all',
-    province: 'all'
+    province: 'all',
   });
   const [sortConfig, setSortConfig] = useState({
     field: 'date_of_expiration',
-    direction: 'desc'
+    direction: 'desc',
   });
   const [pagination, setPagination] = useState({
     currentPage: 1,
     rowsPerPage: 10,
-    totalPages: 1
+    totalPages: 1,
   });
   const [stats, setStats] = useState({
     total: 0,
     byProvince: {},
     avgDaysExpired: 0,
-    withCertificates: 0
+    withCertificates: 0,
   });
 
   // ---------- Fetch expired records ----------
@@ -388,14 +500,16 @@ const ExpiredCso = () => {
       setExpiredData(data);
 
       const total = data.length;
-      const withCertificates = data.filter(item => item.certificate_of_accreditation).length;
+      const withCertificates = data.filter(
+        (item) => item.certificate_of_accreditation
+      ).length;
       const byProvince = {};
-      data.forEach(item => {
+      data.forEach((item) => {
         const province = item.province || 'Unknown';
         byProvince[province] = (byProvince[province] || 0) + 1;
       });
       let totalDays = 0;
-      data.forEach(item => {
+      data.forEach((item) => {
         if (item.date_of_expiration) {
           totalDays += daysSinceExpired(item.date_of_expiration);
         }
@@ -435,7 +549,7 @@ const ExpiredCso = () => {
       accreditation_no: '',
       date_of_issuance: '',
       date_of_expiration: '',
-      certificate_of_accreditation: ''
+      certificate_of_accreditation: '',
     });
   };
 
@@ -466,7 +580,7 @@ const ExpiredCso = () => {
       accreditation_no: record.accreditation_no || '',
       date_of_issuance: record.date_of_issuance || '',
       date_of_expiration: record.date_of_expiration || '',
-      certificate_of_accreditation: record.certificate_of_accreditation || ''
+      certificate_of_accreditation: record.certificate_of_accreditation || '',
     });
     setShowEditModal(true);
   };
@@ -477,24 +591,21 @@ const ExpiredCso = () => {
       setSaving(true);
       setError('');
 
-      // Prepare data – remove empty strings and convert numbers
       const dataToSave = {
         ...formData,
         no: formData.no ? Number(formData.no) : null,
         no_of_members: formData.no_of_members ? Number(formData.no_of_members) : null,
-        // Ensure expiredAt is set for new records
-        ...(showAddModal && !formData.expiredAt && { expiredAt: serverTimestamp() })
+        ...(showAddModal &&
+          !formData.expiredAt && { expiredAt: serverTimestamp() }),
       };
 
       if (showAddModal) {
-        // Create new expired record
         await addDoc(collection(db, 'cso-expired'), {
           ...dataToSave,
-          createdAt: serverTimestamp()
+          createdAt: serverTimestamp(),
         });
         setSuccess('Expired record added successfully!');
       } else if (showEditModal && selectedExpired) {
-        // Update existing expired record – preserve id and system fields
         const { id, expiredAt, createdAt, ...updateData } = dataToSave;
         await updateDoc(doc(db, 'cso-expired', selectedExpired.id), updateData);
         setSuccess('Expired record updated successfully!');
@@ -513,20 +624,41 @@ const ExpiredCso = () => {
     }
   };
 
-  // ---------- Restore record ----------
+  // ---------- Restore record (UPDATED with new dates & sync) ----------
   const handleRestore = async () => {
     if (!selectedExpired) return;
     try {
       const { expiredAt, movedFrom, id, ...restoreData } = selectedExpired;
-      await addDoc(collection(db, 'cso'), {
+
+      // Set new dates
+      const today = new Date();
+      const newIssuance = today.toISOString().split('T')[0];
+      // Set expiration 3 years from today (you can change the multiplier)
+      const expirationDate = new Date(today);
+      expirationDate.setFullYear(today.getFullYear() + 3);
+      const newExpiration = expirationDate.toISOString().split('T')[0];
+
+      const restoredRecord = {
         ...restoreData,
-        restoredAt: serverTimestamp()
-      });
+        date_of_issuance: newIssuance,
+        date_of_expiration: newExpiration,
+        status: 'Active',          // Set status to Active
+        restoredAt: serverTimestamp(),
+      };
+
+      // Add to active CSO collection
+      const docRef = await addDoc(collection(db, 'cso'), restoredRecord);
+
+      // Sync to fullcso‑farmers collection
+      await syncToCsoFarmers(docRef.id, restoredRecord);
+
+      // Remove from expired collection
       await deleteDoc(doc(db, 'cso-expired', selectedExpired.id));
+
       setSuccess(`${selectedExpired.name_of_association} restored successfully!`);
       setShowRestoreModal(false);
       setSelectedExpired(null);
-      fetchExpiredData();
+      fetchExpiredData(); // Refresh expired list
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error('Error restoring expired CSO:', err);
@@ -569,23 +701,23 @@ const ExpiredCso = () => {
 
   // ---------- Sort handler ----------
   const handleSort = (field) => {
-    setSortConfig(prev => ({
+    setSortConfig((prev) => ({
       field,
-      direction: prev.field === field && prev.direction === 'asc' ? 'desc' : 'asc'
+      direction: prev.field === field && prev.direction === 'asc' ? 'desc' : 'asc',
     }));
   };
 
   const handleFilterChange = (filterName, value) => {
-    setFilters(prev => ({ ...prev, [filterName]: value }));
-    setPagination(prev => ({ ...prev, currentPage: 1 }));
+    setFilters((prev) => ({ ...prev, [filterName]: value }));
+    setPagination((prev) => ({ ...prev, currentPage: 1 }));
   };
 
   const handlePageChange = (page) => {
-    setPagination(prev => ({ ...prev, currentPage: page }));
+    setPagination((prev) => ({ ...prev, currentPage: page }));
   };
 
   const handleRowsPerPageChange = (rows) => {
-    setPagination(prev => ({ ...prev, rowsPerPage: rows, currentPage: 1 }));
+    setPagination((prev) => ({ ...prev, rowsPerPage: rows, currentPage: 1 }));
   };
 
   // ---------- Filtered and sorted data ----------
@@ -594,27 +726,30 @@ const ExpiredCso = () => {
 
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
-      filtered = filtered.filter(item =>
-        item.name_of_association?.toLowerCase().includes(searchLower) ||
-        item.contact_person?.toLowerCase().includes(searchLower) ||
-        item.accreditation_no?.toLowerCase().includes(searchLower) ||
-        item.address?.toLowerCase().includes(searchLower) ||
-        item.province?.toLowerCase().includes(searchLower)
+      filtered = filtered.filter(
+        (item) =>
+          item.name_of_association?.toLowerCase().includes(searchLower) ||
+          item.contact_person?.toLowerCase().includes(searchLower) ||
+          item.accreditation_no?.toLowerCase().includes(searchLower) ||
+          item.address?.toLowerCase().includes(searchLower) ||
+          item.province?.toLowerCase().includes(searchLower)
       );
     }
 
     if (filters.scope !== 'all') {
-      filtered = filtered.filter(item => item.scope === filters.scope);
+      filtered = filtered.filter((item) => item.scope === filters.scope);
     }
 
     if (filters.hasCertificate !== 'all') {
-      filtered = filtered.filter(item =>
-        filters.hasCertificate === 'yes' ? item.certificate_of_accreditation : !item.certificate_of_accreditation
+      filtered = filtered.filter((item) =>
+        filters.hasCertificate === 'yes'
+          ? item.certificate_of_accreditation
+          : !item.certificate_of_accreditation
       );
     }
 
     if (filters.province !== 'all') {
-      filtered = filtered.filter(item => item.province === filters.province);
+      filtered = filtered.filter((item) => item.province === filters.province);
     }
 
     filtered.sort((a, b) => {
@@ -627,7 +762,10 @@ const ExpiredCso = () => {
       } else if (sortConfig.field === 'expiredAt') {
         aValue = getArchivedDate(a).getTime();
         bValue = getArchivedDate(b).getTime();
-      } else if (sortConfig.field === 'date_of_expiration' || sortConfig.field === 'date_of_issuance') {
+      } else if (
+        sortConfig.field === 'date_of_expiration' ||
+        sortConfig.field === 'date_of_issuance'
+      ) {
         aValue = aValue ? new Date(aValue).getTime() : 0;
         bValue = bValue ? new Date(bValue).getTime() : 0;
       }
@@ -647,9 +785,9 @@ const ExpiredCso = () => {
   }, [filteredData, pagination]);
 
   useEffect(() => {
-    setPagination(prev => ({
+    setPagination((prev) => ({
       ...prev,
-      totalPages: Math.ceil(filteredData.length / prev.rowsPerPage)
+      totalPages: Math.ceil(filteredData.length / prev.rowsPerPage),
     }));
   }, [filteredData.length, pagination.rowsPerPage]);
 
@@ -661,7 +799,7 @@ const ExpiredCso = () => {
         'Oriental Mindoro',
         'Marinduque',
         'Palawan',
-        'Romblon'
+        'Romblon',
       ];
 
       const extractProvinceFromAddress = (address) => {
@@ -676,31 +814,39 @@ const ExpiredCso = () => {
         return 'Unknown';
       };
 
-      const processedData = expiredData.map(item => {
-        const province = item.province === 'Regional'
-          ? extractProvinceFromAddress(item.address)
-          : (item.province || extractProvinceFromAddress(item.address));
+      const processedData = expiredData.map((item) => {
+        const province =
+          item.province === 'Regional'
+            ? extractProvinceFromAddress(item.address)
+            : item.province || extractProvinceFromAddress(item.address);
         return {
           ...item,
           extractedProvince: province,
           numericNo: parseInt(item.no) || 0,
           expiredDate: formatArchivedDate(item),
-          daysExpired: daysSinceExpired(item.date_of_expiration)
+          daysExpired: daysSinceExpired(item.date_of_expiration),
         };
       });
 
       const groupedData = {};
-      processedData.forEach(item => {
+      processedData.forEach((item) => {
         const province = item.extractedProvince || 'Unknown Province';
         if (!groupedData[province]) groupedData[province] = [];
         groupedData[province].push(item);
       });
 
-      Object.keys(groupedData).forEach(province => {
+      Object.keys(groupedData).forEach((province) => {
         groupedData[province].sort((a, b) => a.numericNo - b.numericNo);
       });
 
-      const provinceOrder = ['Occidental Mindoro', 'Oriental Mindoro', 'Marinduque', 'Palawan', 'Romblon', 'Unknown'];
+      const provinceOrder = [
+        'Occidental Mindoro',
+        'Oriental Mindoro',
+        'Marinduque',
+        'Palawan',
+        'Romblon',
+        'Unknown',
+      ];
       const sortedProvinces = Object.keys(groupedData).sort((a, b) => {
         const indexA = provinceOrder.indexOf(a);
         const indexB = provinceOrder.indexOf(b);
@@ -708,7 +854,20 @@ const ExpiredCso = () => {
       });
 
       const now = new Date();
-      const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      const monthNames = [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ];
       const currentMonth = monthNames[now.getMonth()];
       const currentYear = now.getFullYear();
 
@@ -716,42 +875,54 @@ const ExpiredCso = () => {
 
       const titleStyle = {
         font: { name: 'Arial', sz: 16, bold: true },
-        alignment: { horizontal: "center", vertical: "center" },
-        fill: { fgColor: { rgb: "FEE2E2" }, patternType: "solid" }
+        alignment: { horizontal: 'center', vertical: 'center' },
+        fill: { fgColor: { rgb: 'FEE2E2' }, patternType: 'solid' },
       };
       const subtitleStyle = {
         font: { name: 'Arial', sz: 14, italic: true },
-        alignment: { horizontal: "center", vertical: "center" },
-        fill: { fgColor: { rgb: "FECACA" }, patternType: "solid" }
+        alignment: { horizontal: 'center', vertical: 'center' },
+        fill: { fgColor: { rgb: 'FECACA' }, patternType: 'solid' },
       };
       const headerStyle = {
-        font: { name: 'Arial', sz: 12, bold: true, color: { rgb: "FFFFFF" } },
-        alignment: { horizontal: "center", vertical: "center", wrapText: true },
-        fill: { fgColor: { rgb: "B91C1C" }, patternType: "solid" },
+        font: { name: 'Arial', sz: 12, bold: true, color: { rgb: 'FFFFFF' } },
+        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+        fill: { fgColor: { rgb: 'B91C1C' }, patternType: 'solid' },
         border: {
-          top: { style: "thin" }, bottom: { style: "thin" },
-          left: { style: "thin" }, right: { style: "thin" }
-        }
+          top: { style: 'thin' },
+          bottom: { style: 'thin' },
+          left: { style: 'thin' },
+          right: { style: 'thin' },
+        },
       };
       const provinceHeaderStyle = {
         font: { name: 'Arial', sz: 14, bold: true },
-        fill: { fgColor: { rgb: "FCA5A5" }, patternType: "solid" },
-        alignment: { horizontal: "left", vertical: "center" },
-        border: { top: { style: "medium" }, bottom: { style: "medium" }, left: { style: "medium" }, right: { style: "medium" } }
+        fill: { fgColor: { rgb: 'FCA5A5' }, patternType: 'solid' },
+        alignment: { horizontal: 'left', vertical: 'center' },
+        border: {
+          top: { style: 'medium' },
+          bottom: { style: 'medium' },
+          left: { style: 'medium' },
+          right: { style: 'medium' },
+        },
       };
       const dataStyle = {
         font: { name: 'Arial', sz: 11 },
-        alignment: { vertical: "center", wrapText: true },
+        alignment: { vertical: 'center', wrapText: true },
         border: {
-          top: { style: "thin" }, bottom: { style: "thin" },
-          left: { style: "thin" }, right: { style: "thin" }
-        }
+          top: { style: 'thin' },
+          bottom: { style: 'thin' },
+          left: { style: 'thin' },
+          right: { style: 'thin' },
+        },
       };
       const linkStyle = {
         ...dataStyle,
-        font: { name: 'Arial', sz: 11, color: { rgb: "0563C1" }, underline: true }
+        font: { name: 'Arial', sz: 11, color: { rgb: '0563C1' }, underline: true },
       };
-      const centerStyle = { ...dataStyle, alignment: { horizontal: "center", vertical: "center" } };
+      const centerStyle = {
+        ...dataStyle,
+        alignment: { horizontal: 'center', vertical: 'center' },
+      };
 
       const wsData = [];
       const merges = [];
@@ -763,30 +934,61 @@ const ExpiredCso = () => {
       merges.push({ s: { r: 1, c: 0 }, e: { r: 1, c: 17 } });
 
       wsData.push([
-        'NO.', 'NAME OF THE ASSOCIATION', 'CONTACT PERSON', 'POSITION',
-        'SEX', '',
-        'CONTACT NUMBER', 'EMAIL ADDRESS', 'NO. OF MEMBERS', 'ADDRESS',
-        'SCOPE', 'NATURE OF SERVICES', 'ACCREDITATION NO.',
-        'DATE OF ISSUANCE', 'DATE OF EXPIRATION', 'CERTIFICATE OF ACCREDITATION',
-        'ARCHIVED ON', 'DAYS EXPIRED'
+        'NO.',
+        'NAME OF THE ASSOCIATION',
+        'CONTACT PERSON',
+        'POSITION',
+        'SEX',
+        '',
+        'CONTACT NUMBER',
+        'EMAIL ADDRESS',
+        'NO. OF MEMBERS',
+        'ADDRESS',
+        'SCOPE',
+        'NATURE OF SERVICES',
+        'ACCREDITATION NO.',
+        'DATE OF ISSUANCE',
+        'DATE OF EXPIRATION',
+        'CERTIFICATE OF ACCREDITATION',
+        'ARCHIVED ON',
+        'DAYS EXPIRED',
       ]);
-      wsData.push(['', '', '', '', 'F', 'M', '', '', '', '', '', '', '', '', '', '', '', '']);
+      wsData.push([
+        '',
+        '',
+        '',
+        '',
+        'F',
+        'M',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+      ]);
 
       merges.push({ s: { r: 3, c: 4 }, e: { r: 3, c: 5 } });
-      [0, 1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17].forEach(col => {
+      [0, 1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17].forEach((col) => {
         merges.push({ s: { r: 3, c: col }, e: { r: 4, c: col } });
       });
 
       let currentRow = 5;
 
-      sortedProvinces.forEach(province => {
+      sortedProvinces.forEach((province) => {
         const pRow = Array(18).fill('');
         pRow[0] = province.toUpperCase();
         wsData.push(pRow);
         merges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: 17 } });
         currentRow++;
 
-        groupedData[province].forEach(item => {
+        groupedData[province].forEach((item) => {
           wsData.push([
             item.no || '',
             item.name_of_association || '',
@@ -805,7 +1007,7 @@ const ExpiredCso = () => {
             item.date_of_expiration || '',
             item.certificate_of_accreditation || '',
             item.expiredDate,
-            item.daysExpired.toString()
+            item.daysExpired.toString(),
           ]);
           currentRow++;
         });
@@ -815,11 +1017,24 @@ const ExpiredCso = () => {
 
       const ws = XLSXStyle.utils.aoa_to_sheet(wsData);
       ws['!cols'] = [
-        { wch: 8 }, { wch: 40 }, { wch: 25 }, { wch: 20 },
-        { wch: 6 }, { wch: 6 },
-        { wch: 18 }, { wch: 30 }, { wch: 15 }, { wch: 45 },
-        { wch: 15 }, { wch: 35 }, { wch: 20 }, { wch: 18 },
-        { wch: 18 }, { wch: 45 }, { wch: 18 }, { wch: 15 }
+        { wch: 8 },
+        { wch: 40 },
+        { wch: 25 },
+        { wch: 20 },
+        { wch: 6 },
+        { wch: 6 },
+        { wch: 18 },
+        { wch: 30 },
+        { wch: 15 },
+        { wch: 45 },
+        { wch: 15 },
+        { wch: 35 },
+        { wch: 20 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 45 },
+        { wch: 18 },
+        { wch: 15 },
       ];
       ws['!rows'] = wsData.map((row, i) => {
         if (i === 0) return { hpt: 40 };
@@ -839,14 +1054,16 @@ const ExpiredCso = () => {
           else if (R === 1) cell.s = subtitleStyle;
           else if (R === 3 || R === 4) cell.s = headerStyle;
           else {
-            const isProvince = sortedProvinces.some(p => wsData[R] && wsData[R][0] === p.toUpperCase());
+            const isProvince = sortedProvinces.some(
+              (p) => wsData[R] && wsData[R][0] === p.toUpperCase()
+            );
             if (isProvince) cell.s = provinceHeaderStyle;
             else if (wsData[R] && wsData[R][0] !== '') {
               if (C === 15 && cell.v && cell.v.toString().startsWith('http')) {
-                cell.l = { Target: cell.v, Tooltip: "Click to view Certificate" };
+                cell.l = { Target: cell.v, Tooltip: 'Click to view Certificate' };
                 cell.s = linkStyle;
               } else {
-                cell.s = ([0, 4, 5, 8, 17].includes(C)) ? centerStyle : dataStyle;
+                cell.s = [0, 4, 5, 8, 17].includes(C) ? centerStyle : dataStyle;
               }
             }
           }
@@ -855,7 +1072,11 @@ const ExpiredCso = () => {
 
       ws['!merges'] = merges;
       XLSXStyle.utils.book_append_sheet(wb, ws, 'Expired CSOs');
-      const excelBuffer = XLSXStyle.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
+      const excelBuffer = XLSXStyle.write(wb, {
+        bookType: 'xlsx',
+        type: 'array',
+        cellStyles: true,
+      });
       saveAs(new Blob([excelBuffer]), `Expired_CSO_Organizations.xlsx`);
       setSuccess('Export Complete!');
     } catch (err) {
@@ -870,9 +1091,7 @@ const ExpiredCso = () => {
       key: 'no',
       header: 'No.',
       sortable: true,
-      render: (row) => (
-        <div className="font-mono font-bold text-gray-900">{row.no}</div>
-      )
+      render: (row) => <div className="font-mono font-bold text-gray-900">{row.no}</div>,
     },
     {
       key: 'name_of_association',
@@ -886,7 +1105,7 @@ const ExpiredCso = () => {
             {row.province || 'No province'}
           </div>
         </div>
-      )
+      ),
     },
     {
       key: 'contact_person',
@@ -897,7 +1116,7 @@ const ExpiredCso = () => {
           <div className="font-medium text-gray-900">{row.contact_person}</div>
           <div className="text-sm text-gray-500">{row.position}</div>
         </div>
-      )
+      ),
     },
     {
       key: 'expiration',
@@ -912,30 +1131,30 @@ const ExpiredCso = () => {
             {daysSinceExpired(row.date_of_expiration)} days expired
           </div>
         </div>
-      )
+      ),
     },
     {
       key: 'expiredAt',
       header: 'Archived On',
       sortable: true,
-      render: (row) => (
-        <div className="text-sm text-gray-700">
-          {formatArchivedDate(row)}
-        </div>
-      )
+      render: (row) => <div className="text-sm text-gray-700">{formatArchivedDate(row)}</div>,
     },
     {
       key: 'scope',
       header: 'Scope',
       render: (row) => (
-        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-          row.scope === 'Regional' ? 'bg-blue-100 text-blue-800' :
-          row.scope === 'National' ? 'bg-purple-100 text-purple-800' :
-          'bg-gray-100 text-gray-800'
-        }`}>
+        <span
+          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+            row.scope === 'Regional'
+              ? 'bg-blue-100 text-blue-800'
+              : row.scope === 'National'
+              ? 'bg-purple-100 text-purple-800'
+              : 'bg-gray-100 text-gray-800'
+          }`}
+        >
           {row.scope}
         </span>
-      )
+      ),
     },
     {
       key: 'accreditation',
@@ -955,7 +1174,7 @@ const ExpiredCso = () => {
             </a>
           )}
         </div>
-      )
+      ),
     },
     {
       key: 'actions',
@@ -991,12 +1210,14 @@ const ExpiredCso = () => {
             <Trash2 className="h-4 w-4" />
           </button>
         </div>
-      )
-    }
+      ),
+    },
   ];
 
   const provinces = useMemo(() => {
-    const uniqueProvinces = [...new Set(expiredData.map(item => item.province).filter(Boolean))];
+    const uniqueProvinces = [
+      ...new Set(expiredData.map((item) => item.province).filter(Boolean)),
+    ];
     return uniqueProvinces.sort();
   }, [expiredData]);
 
@@ -1028,8 +1249,10 @@ const ExpiredCso = () => {
         onChange={onChange}
         className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-black"
       >
-        {options.map(opt => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
         ))}
       </select>
     </div>
@@ -1100,7 +1323,10 @@ const ExpiredCso = () => {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <motion.div whileHover={{ y: -4 }} className="bg-gradient-to-br from-red-500 to-red-600 rounded-2xl shadow-xl p-6 text-white">
+        <motion.div
+          whileHover={{ y: -4 }}
+          className="bg-gradient-to-br from-red-500 to-red-600 rounded-2xl shadow-xl p-6 text-white"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-red-100 text-sm font-medium">Total Expired</p>
@@ -1115,7 +1341,10 @@ const ExpiredCso = () => {
           </div>
         </motion.div>
 
-        <motion.div whileHover={{ y: -4 }} className="bg-gradient-to-br from-orange-500 to-amber-500 rounded-2xl shadow-xl p-6 text-white">
+        <motion.div
+          whileHover={{ y: -4 }}
+          className="bg-gradient-to-br from-orange-500 to-amber-500 rounded-2xl shadow-xl p-6 text-white"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-orange-100 text-sm font-medium">Avg. Days Expired</p>
@@ -1128,7 +1357,10 @@ const ExpiredCso = () => {
           </div>
         </motion.div>
 
-        <motion.div whileHover={{ y: -4 }} className="bg-gradient-to-br from-amber-500 to-yellow-500 rounded-2xl shadow-xl p-6 text-white">
+        <motion.div
+          whileHover={{ y: -4 }}
+          className="bg-gradient-to-br from-amber-500 to-yellow-500 rounded-2xl shadow-xl p-6 text-white"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-amber-100 text-sm font-medium">With Certificates</p>
@@ -1143,19 +1375,22 @@ const ExpiredCso = () => {
           </div>
         </motion.div>
 
-        <motion.div whileHover={{ y: -4 }} className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl shadow-xl p-6 text-white">
+        <motion.div
+          whileHover={{ y: -4 }}
+          className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl shadow-xl p-6 text-white"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-purple-100 text-sm font-medium">Top Province</p>
               <p className="text-xl font-bold mt-2 truncate max-w-[150px]">
-                {Object.entries(stats.byProvince).sort((a,b) => b[1] - a[1])[0]?.[0] || 'N/A'}
+                {Object.entries(stats.byProvince).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A'}
               </p>
             </div>
             <MapPin className="h-12 w-12 opacity-80" />
           </div>
           <div className="mt-4 pt-4 border-t border-purple-400">
             <p className="text-purple-100 text-sm">
-              {Object.entries(stats.byProvince).sort((a,b) => b[1] - a[1])[0]?.[1] || 0} records
+              {Object.entries(stats.byProvince).sort((a, b) => b[1] - a[1])[0]?.[1] || 0} records
             </p>
           </div>
         </motion.div>
@@ -1250,8 +1485,10 @@ const ExpiredCso = () => {
               className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-black"
             >
               <option value="all">All Provinces</option>
-              {provinces.map(province => (
-                <option key={province} value={province}>{province}</option>
+              {provinces.map((province) => (
+                <option key={province} value={province}>
+                  {province}
+                </option>
               ))}
             </select>
           </div>
@@ -1288,7 +1525,10 @@ const ExpiredCso = () => {
           rowsPerPage: pagination.rowsPerPage,
           total: filteredData.length,
           startIndex: (pagination.currentPage - 1) * pagination.rowsPerPage,
-          endIndex: Math.min(pagination.currentPage * pagination.rowsPerPage, filteredData.length)
+          endIndex: Math.min(
+            pagination.currentPage * pagination.rowsPerPage,
+            filteredData.length
+          ),
         }}
         onPageChange={handlePageChange}
         onRowsPerPageChange={handleRowsPerPageChange}
@@ -1416,7 +1656,7 @@ const ExpiredCso = () => {
                 options={[
                   { value: 'Regional', label: 'Regional' },
                   { value: 'National', label: 'National' },
-                  { value: 'Local', label: 'Local' }
+                  { value: 'Local', label: 'Local' },
                 ]}
               />
               <FormInput
@@ -1450,7 +1690,9 @@ const ExpiredCso = () => {
                 id="certificate_of_accreditation"
                 type="url"
                 value={formData.certificate_of_accreditation}
-                onChange={(e) => setFormData({ ...formData, certificate_of_accreditation: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, certificate_of_accreditation: e.target.value })
+                }
               />
             </div>
           </div>
@@ -1535,11 +1777,28 @@ const ExpiredCso = () => {
                   Contact Information
                 </h3>
                 <div className="space-y-3">
-                  <div><p className="text-sm text-gray-500">Contact Person</p><p className="font-medium text-black">{selectedExpired.contact_person || 'Not specified'}</p></div>
-                  <div><p className="text-sm text-gray-500">Position</p><p className="font-medium text-black">{selectedExpired.position || 'Not specified'}</p></div>
-                  <div><p className="text-sm text-gray-500">Sex</p><p className="font-medium text-black">{selectedExpired.sex_female ? 'Female' : selectedExpired.sex_male ? 'Male' : 'Not specified'}</p></div>
-                  <div><p className="text-sm text-gray-500">Contact Number</p><p className="font-medium text-black">{selectedExpired.contact_number || 'Not specified'}</p></div>
-                  <div><p className="text-sm text-gray-500">Email Address</p><p className="font-medium text-black">{selectedExpired.email_address || 'Not specified'}</p></div>
+                  <div>
+                    <p className="text-sm text-gray-500">Contact Person</p>
+                    <p className="font-medium text-black">{selectedExpired.contact_person || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Position</p>
+                    <p className="font-medium text-black">{selectedExpired.position || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Sex</p>
+                    <p className="font-medium text-black">
+                      {selectedExpired.sex_female ? 'Female' : selectedExpired.sex_male ? 'Male' : 'Not specified'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Contact Number</p>
+                    <p className="font-medium text-black">{selectedExpired.contact_number || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Email Address</p>
+                    <p className="font-medium text-black">{selectedExpired.email_address || 'Not specified'}</p>
+                  </div>
                 </div>
               </div>
               {/* Location & Members */}
@@ -1549,53 +1808,119 @@ const ExpiredCso = () => {
                   Location & Members
                 </h3>
                 <div className="space-y-3">
-                  <div><p className="text-sm text-gray-500">Address</p><p className="font-medium text-black">{selectedExpired.address || 'Not specified'}</p></div>
-                  <div><p className="text-sm text-gray-500">Province</p><p className="font-medium text-black">{selectedExpired.province || 'Not specified'}</p></div>
-                  <div><p className="text-sm text-gray-500">Region</p><p className="font-medium text-black">{selectedExpired.region || 'MIMAROPA'}</p></div>
-                  <div><p className="text-sm text-gray-500">Number of Members</p><div className="flex items-center"><Users className="h-4 w-4 mr-2 text-purple-600" /><p className="font-medium text-black">{selectedExpired.no_of_members || '0'} members</p></div></div>
+                  <div>
+                    <p className="text-sm text-gray-500">Address</p>
+                    <p className="font-medium text-black">{selectedExpired.address || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Province</p>
+                    <p className="font-medium text-black">{selectedExpired.province || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Region</p>
+                    <p className="font-medium text-black">{selectedExpired.region || 'MIMAROPA'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Number of Members</p>
+                    <div className="flex items-center">
+                      <Users className="h-4 w-4 mr-2 text-purple-600" />
+                      <p className="font-medium text-black">{selectedExpired.no_of_members || '0'} members</p>
+                    </div>
+                  </div>
                 </div>
               </div>
-              {/* Accreditation Details */}
+
               <div className="md:col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <Shield className="h-5 w-5 mr-2 text-amber-600" />
                   Accreditation Details
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div><p className="text-sm text-gray-500">Accreditation Number</p><p className="font-medium font-mono text-black">{selectedExpired.accreditation_no || 'Not specified'}</p></div>
-                  <div><p className="text-sm text-gray-500">Date of Issuance</p><p className="font-medium text-black">{selectedExpired.date_of_issuance ? formatDate(selectedExpired.date_of_issuance) : 'Not specified'}</p></div>
-                  <div><p className="text-sm text-gray-500">Date of Expiration</p><p className="font-medium text-red-600">{selectedExpired.date_of_expiration ? formatDate(selectedExpired.date_of_expiration) : 'Not specified'}</p></div>
+                  <div>
+                    <p className="text-sm text-gray-500">Accreditation Number</p>
+                    <p className="font-medium font-mono text-black">{selectedExpired.accreditation_no || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Date of Issuance</p>
+                    <p className="font-medium text-black">
+                      {selectedExpired.date_of_issuance ? formatDate(selectedExpired.date_of_issuance) : 'Not specified'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Date of Expiration</p>
+                    <p className="font-medium text-red-600">
+                      {selectedExpired.date_of_expiration ? formatDate(selectedExpired.date_of_expiration) : 'Not specified'}
+                    </p>
+                  </div>
                 </div>
               </div>
-              {/* Expiration Details */}
               <div className="md:col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <Clock className="h-5 w-5 mr-2 text-red-600" />
                   Expiration Details
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><p className="text-sm text-gray-500">Archived On</p><p className="font-medium text-black">{formatArchivedDate(selectedExpired)}</p></div>
-                  <div><p className="text-sm text-gray-500">Days Since Expiration</p><p className="font-medium text-red-600">{daysSinceExpired(selectedExpired.date_of_expiration)} days</p></div>
+                  <div>
+                    <p className="text-sm text-gray-500">Archived On</p>
+                    <p className="font-medium text-black">{formatArchivedDate(selectedExpired)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Days Since Expiration</p>
+                    <p className="font-medium text-red-600">{daysSinceExpired(selectedExpired.date_of_expiration)} days</p>
+                  </div>
                 </div>
               </div>
               {/* Nature of Services */}
               <div className="md:col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Nature of Services</h3>
-                <div className="bg-gray-50 rounded-lg p-4"><p className="text-gray-700 whitespace-pre-line">{selectedExpired.nature_of_services || 'No services specified'}</p></div>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-gray-700 whitespace-pre-line">{selectedExpired.nature_of_services || 'No services specified'}</p>
+                </div>
               </div>
             </div>
 
             <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
-              <button onClick={() => { setShowViewModal(false); openEditModal(selectedExpired); }} className="px-5 py-2.5 bg-amber-600 text-white font-medium rounded-xl hover:bg-amber-700 transition"><Edit className="h-4 w-4 inline mr-2" />Edit</button>
-              <button onClick={() => { setShowViewModal(false); openRestoreModal(selectedExpired); }} className="px-5 py-2.5 bg-green-600 text-white font-medium rounded-xl hover:bg-green-700 transition"><RotateCcw className="h-4 w-4 inline mr-2" />Restore</button>
-              <button onClick={() => { setShowViewModal(false); openDeleteModal(selectedExpired); }} className="px-5 py-2.5 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 transition"><Trash2 className="h-4 w-4 inline mr-2" />Delete</button>
+              <button
+                onClick={() => {
+                  setShowViewModal(false);
+                  openEditModal(selectedExpired);
+                }}
+                className="px-5 py-2.5 bg-amber-600 text-white font-medium rounded-xl hover:bg-amber-700 transition"
+              >
+                <Edit className="h-4 w-4 inline mr-2" />
+                Edit
+              </button>
+              <button
+                onClick={() => {
+                  setShowViewModal(false);
+                  openRestoreModal(selectedExpired);
+                }}
+                className="px-5 py-2.5 bg-green-600 text-white font-medium rounded-xl hover:bg-green-700 transition"
+              >
+                <RotateCcw className="h-4 w-4 inline mr-2" />
+                Restore
+              </button>
+              <button
+                onClick={() => {
+                  setShowViewModal(false);
+                  openDeleteModal(selectedExpired);
+                }}
+                className="px-5 py-2.5 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 transition"
+              >
+                <Trash2 className="h-4 w-4 inline mr-2" />
+                Delete
+              </button>
             </div>
           </div>
         )}
       </Modal>
 
-      {/* Restore Confirmation Modal */}
-      <Modal isOpen={showRestoreModal} onClose={() => setShowRestoreModal(false)} title="Restore Expired Record" size="sm">
+      <Modal
+        isOpen={showRestoreModal}
+        onClose={() => setShowRestoreModal(false)}
+        title="Restore Expired Record"
+        size="sm"
+      >
         <div className="text-center py-6">
           <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
             <RotateCcw className="h-8 w-8 text-green-600" />
@@ -1604,17 +1929,33 @@ const ExpiredCso = () => {
           <p className="text-gray-600 mb-6">
             Are you sure you want to restore{' '}
             <span className="font-semibold">{selectedExpired?.name_of_association}</span>?
-            This will move it back to the active CSO list.
+            This will move it back to the active CSO list with a new accreditation date (today)
+            and a new expiration date (3 years from today).
           </p>
           <div className="flex justify-center space-x-3">
-            <button onClick={() => setShowRestoreModal(false)} className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition">Cancel</button>
-            <button onClick={handleRestore} className="px-6 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-medium rounded-lg hover:from-green-700 hover:to-emerald-700 transition">Restore Record</button>
+            <button
+              onClick={() => setShowRestoreModal(false)}
+              className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleRestore}
+              className="px-6 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-medium rounded-lg hover:from-green-700 hover:to-emerald-700 transition"
+            >
+              Restore Record
+            </button>
           </div>
         </div>
       </Modal>
 
       {/* Permanent Delete Confirmation Modal */}
-      <Modal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} title="Permanently Delete" size="sm">
+      <Modal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        title="Permanently Delete"
+        size="sm"
+      >
         <div className="text-center py-6">
           <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
             <Trash2 className="h-8 w-8 text-red-600" />
@@ -1626,8 +1967,18 @@ const ExpiredCso = () => {
             This action cannot be undone.
           </p>
           <div className="flex justify-center space-x-3">
-            <button onClick={() => setShowDeleteModal(false)} className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition">Cancel</button>
-            <button onClick={handlePermanentDelete} className="px-6 py-2.5 bg-gradient-to-r from-red-600 to-red-500 text-white font-medium rounded-lg hover:from-red-700 hover:to-red-600 transition">Delete Permanently</button>
+            <button
+              onClick={() => setShowDeleteModal(false)}
+              className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handlePermanentDelete}
+              className="px-6 py-2.5 bg-gradient-to-r from-red-600 to-red-500 text-white font-medium rounded-lg hover:from-red-700 hover:to-red-600 transition"
+            >
+              Delete Permanently
+            </button>
           </div>
         </div>
       </Modal>
