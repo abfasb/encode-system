@@ -30,11 +30,11 @@ import Logo from "../../assets/DA.png";
 export default function Sidebar({
   links = [
     { name: "Dashboard", icon: <FiHome />, key: "dashboard" },
-    { name: "Full Farmers Coop & Associations", icon: <Handshake />, key: "full-farmers" },
+    { name: "Farmers Coop & Associations", icon: <Handshake />, key: "full-farmers" },
+    { name: "CSOs Accreditation", icon: <FiBook />, key: "cso" },
+    { name: "RCEF Accreditation", icon: <FiFileText />, key: "rcef-reports" },
     { name: "Audit Logs", icon: <FiUser />, key: "audit" },
-    { name: "CSOs", icon: <FiBook />, key: "cso" },
-    { name: "Upload CSOs", icon: <FiCloud />, key: "upload-cso" },
-    { name: "RCEF Reports", icon: <FiFileText />, key: "rcef-reports" }
+
   ],
   logo = Logo,
   appName = "Agriculture",

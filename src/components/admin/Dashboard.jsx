@@ -104,7 +104,6 @@ export default function Dashboard() {
     }
   };
 
-  // Analytics
   const analytics = useMemo(() => {
     if (data.length === 0) return null;
     const totalAssociations = data.length;
@@ -395,7 +394,7 @@ export default function Dashboard() {
       <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 mb-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-lg font-bold text-gray-800">Registration Type Distribution</h3>
+            <h3 className="text-lg font-bold text-gray-800">MIMAROPA Registration Type</h3>
             <p className="text-sm text-gray-500">Number of associations by registration type (CDA, SEC, DOLE)</p>
           </div>
           <div className="bg-indigo-100 p-2 rounded-xl">
@@ -426,7 +425,7 @@ export default function Dashboard() {
       <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-lg font-bold text-gray-800">Associations by Province</h3>
+            <h3 className="text-lg font-bold text-gray-800">FCAs</h3>
             <p className="text-sm text-gray-500">Top 10 provinces with most associations</p>
           </div>
           <div className="bg-purple-100 p-2 rounded-xl">
