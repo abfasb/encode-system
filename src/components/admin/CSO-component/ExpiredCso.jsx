@@ -8,7 +8,7 @@ import {
   doc,
   query,
   serverTimestamp,
-  setDoc,                // <-- added for fullcso‑farmers sync
+  setDoc,
 } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import * as XLSXStyle from 'xlsx-js-style';
@@ -112,28 +112,30 @@ const getTypeFromName = (name) => {
     return 'Irrigators Association';
   if (lower.includes('farmers association') || lower.includes('farmers'))
     return 'Farmers Association';
-  return 'Association'; // default
+  return 'Association';
 };
 
-// ---------- Advanced parser for no_of_members ----------
+// ---------- Advanced parser for no_of_members (handles numbers) ----------
 const parseMemberString = (memberStr) => {
-  if (!memberStr) return { total: 0, male: 0, female: 0 };
+  // Convert to string if it's a number
+  const str = memberStr ? String(memberStr) : '';
+  if (!str) return { total: 0, male: 0, female: 0 };
 
   let total = 0;
   let male = 0;
   let female = 0;
 
-  const totalMatch = memberStr.match(/(\d+[\d,]*)\s*(?:members?|total|:)/i);
+  const totalMatch = str.match(/(\d+[\d,]*)\s*(?:members?|total|:)/i);
   if (totalMatch) {
     total = parseInt(totalMatch[1].replace(/,/g, ''), 10);
   }
 
-  const maleMatch = memberStr.match(/[Mm][:\-\s]*(\d+)/);
+  const maleMatch = str.match(/[Mm][:\-\s]*(\d+)/);
   if (maleMatch) {
     male = parseInt(maleMatch[1], 10);
   }
 
-  const femaleMatch = memberStr.match(/[Ff][:\-\s]*(\d+)/);
+  const femaleMatch = str.match(/[Ff][:\-\s]*(\d+)/);
   if (femaleMatch) {
     female = parseInt(femaleMatch[1], 10);
   }
@@ -143,7 +145,7 @@ const parseMemberString = (memberStr) => {
   }
 
   if (total === 0) {
-    const anyNumber = memberStr.match(/^(\d+)/);
+    const anyNumber = str.match(/^(\d+)/);
     if (anyNumber) {
       total = parseInt(anyNumber[1], 10);
     }
@@ -454,6 +456,10 @@ const ExpiredCso = () => {
   });
   const [saving, setSaving] = useState(false);
 
+  // State for restore date selection
+  const [restoreIssuanceDate, setRestoreIssuanceDate] = useState('');
+  const [restoreExpirationDate, setRestoreExpirationDate] = useState('');
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({
     scope: 'all',
@@ -624,25 +630,36 @@ const ExpiredCso = () => {
     }
   };
 
-  // ---------- Restore record (UPDATED with new dates & sync) ----------
+  // ---------- Open Restore Modal with default dates ----------
+  const openRestoreModal = (record) => {
+    setSelectedExpired(record);
+    // Default issuance = today, expiration = 3 years from today
+    const today = new Date();
+    const defaultIssuance = today.toISOString().split('T')[0];
+    const defaultExpiration = new Date(today);
+    defaultExpiration.setFullYear(today.getFullYear() + 3);
+    const defaultExpirationStr = defaultExpiration.toISOString().split('T')[0];
+    setRestoreIssuanceDate(defaultIssuance);
+    setRestoreExpirationDate(defaultExpirationStr);
+    setShowViewModal(false);
+    setShowRestoreModal(true);
+  };
+
+  // ---------- Restore record (UPDATED: user chooses dates & deletes from rcefexpired) ----------
   const handleRestore = async () => {
     if (!selectedExpired) return;
+    if (!restoreExpirationDate) {
+      setError('Please select a new expiration date.');
+      return;
+    }
     try {
       const { expiredAt, movedFrom, id, ...restoreData } = selectedExpired;
 
-      // Set new dates
-      const today = new Date();
-      const newIssuance = today.toISOString().split('T')[0];
-      // Set expiration 3 years from today (you can change the multiplier)
-      const expirationDate = new Date(today);
-      expirationDate.setFullYear(today.getFullYear() + 3);
-      const newExpiration = expirationDate.toISOString().split('T')[0];
-
       const restoredRecord = {
         ...restoreData,
-        date_of_issuance: newIssuance,
-        date_of_expiration: newExpiration,
-        status: 'Active',          // Set status to Active
+        date_of_issuance: restoreIssuanceDate,
+        date_of_expiration: restoreExpirationDate,
+        status: 'Active',
         restoredAt: serverTimestamp(),
       };
 
@@ -651,6 +668,15 @@ const ExpiredCso = () => {
 
       // Sync to fullcso‑farmers collection
       await syncToCsoFarmers(docRef.id, restoredRecord);
+
+      // Attempt to remove from rcefexpired collection (if exists)
+      try {
+        await deleteDoc(doc(db, 'rcefexpired', selectedExpired.id));
+        console.log(`Removed from rcefexpired: ${selectedExpired.id}`);
+      } catch (rcefErr) {
+        console.warn('Could not delete from rcefexpired, maybe it doesn’t exist:', rcefErr);
+        // Do not block the restore if this fails
+      }
 
       // Remove from expired collection
       await deleteDoc(doc(db, 'cso-expired', selectedExpired.id));
@@ -685,12 +711,6 @@ const ExpiredCso = () => {
   const handleView = (record) => {
     setSelectedExpired(record);
     setShowViewModal(true);
-  };
-
-  const openRestoreModal = (record) => {
-    setSelectedExpired(record);
-    setShowViewModal(false);
-    setShowRestoreModal(true);
   };
 
   const openDeleteModal = (record) => {
@@ -1829,7 +1849,7 @@ const ExpiredCso = () => {
                   </div>
                 </div>
               </div>
-
+              {/* Accreditation Details */}
               <div className="md:col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <Shield className="h-5 w-5 mr-2 text-amber-600" />
@@ -1854,6 +1874,7 @@ const ExpiredCso = () => {
                   </div>
                 </div>
               </div>
+              {/* Expiration Details */}
               <div className="md:col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <Clock className="h-5 w-5 mr-2 text-red-600" />
@@ -1915,24 +1936,49 @@ const ExpiredCso = () => {
         )}
       </Modal>
 
+      {/* Restore Confirmation Modal with Date Pickers */}
       <Modal
         isOpen={showRestoreModal}
         onClose={() => setShowRestoreModal(false)}
         title="Restore Expired Record"
-        size="sm"
+        size="md"
       >
-        <div className="text-center py-6">
-          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
-            <RotateCcw className="h-8 w-8 text-green-600" />
-          </div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">Restore to Active</h3>
-          <p className="text-gray-600 mb-6">
-            Are you sure you want to restore{' '}
-            <span className="font-semibold">{selectedExpired?.name_of_association}</span>?
-            This will move it back to the active CSO list with a new accreditation date (today)
-            and a new expiration date (3 years from today).
+        <div className="space-y-6">
+          <p className="text-gray-700">
+            You are about to restore{' '}
+            <span className="font-semibold">{selectedExpired?.name_of_association}</span>.
+            This will move it back to the active CSO list. Please set the new accreditation dates:
           </p>
-          <div className="flex justify-center space-x-3">
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                New Date of Issuance (Optional)
+              </label>
+              <input
+                type="date"
+                value={restoreIssuanceDate}
+                onChange={(e) => setRestoreIssuanceDate(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 text-black"
+              />
+              <p className="text-xs text-gray-500 mt-1">Defaults to today if left empty.</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                New Date of Expiration *
+              </label>
+              <input
+                type="date"
+                value={restoreExpirationDate}
+                onChange={(e) => setRestoreExpirationDate(e.target.value)}
+                required
+                className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 text-black"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-3 pt-4">
             <button
               onClick={() => setShowRestoreModal(false)}
               className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition"
