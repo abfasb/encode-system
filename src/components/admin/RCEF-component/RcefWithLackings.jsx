@@ -2,7 +2,19 @@ import React, { useState, useEffect, useMemo } from 'react';
 import DataTable from 'react-data-table-component';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { getFirestore, collection, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  doc,
+  updateDoc,
+  deleteDoc,
+  addDoc,
+  query,
+  where,
+  orderBy,
+  limit
+} from 'firebase/firestore';
 import {
   Eye,
   Edit,
@@ -18,7 +30,8 @@ import {
   Building,
   User,
   FileText,
-  Clock
+  Clock,
+  ArrowRightCircle
 } from 'lucide-react';
 import { db } from '../../../config/firebase';
 
@@ -97,8 +110,13 @@ const RcefWithLackings = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [restoreDates, setRestoreDates] = useState({
+    date_accredited: '',
+    date_expiration: ''
+  });
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({ province: 'all', year: 'all' });
@@ -176,6 +194,41 @@ const RcefWithLackings = () => {
     return Array.from(years).sort((a, b) => b - a); // descending, most recent first
   }, [data]);
 
+  // ---------- Helper: Get next sequence number for 'rcef' collection ----------
+  const getNextAccreditedSequenceNumber = async (province, municipality) => {
+    if (!province || !municipality) return '1';
+    try {
+      const q = query(
+        collection(db, 'rcef'),
+        where('province', '==', province),
+        where('municipality', '==', municipality),
+        orderBy('no', 'desc'),
+        limit(1)
+      );
+      const querySnapshot = await getDocs(q);
+      if (querySnapshot.empty) {
+        return '1';
+      }
+      const lastNo = querySnapshot.docs[0].data().no;
+      const lastNum = parseInt(lastNo, 10);
+      return isNaN(lastNum) ? '1' : (lastNum + 1).toString();
+    } catch (error) {
+      console.error('Error getting next sequence number for rcef:', error);
+      return '1';
+    }
+  };
+
+  // ---------- Helper: Find corresponding fullcso document by lackingsId ----------
+  const findFullCsoByLackingsId = async (lackingsId) => {
+    const q = query(
+      collection(db, 'fullcso-farmers'),
+      where('rcefLackingsId', '==', lackingsId),
+      limit(1)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.empty ? null : { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+  };
+
   // ---------- Edit / Delete Handlers ----------
   const handleEdit = (row) => {
     setSelectedApplication(row);
@@ -186,7 +239,15 @@ const RcefWithLackings = () => {
   const handleDelete = async () => {
     if (!selectedApplication) return;
     try {
+      // Delete from rcef-lackings
       await deleteDoc(doc(db, 'rcef-lackings', selectedApplication.id));
+
+      // Optionally delete from fullcso-farmers if it exists
+      const fullCsoDoc = await findFullCsoByLackingsId(selectedApplication.id);
+      if (fullCsoDoc) {
+        await deleteDoc(doc(db, 'fullcso-farmers', fullCsoDoc.id));
+      }
+
       setData(data.filter(item => item.id !== selectedApplication.id));
       setSuccess(`Record "${selectedApplication.name}" deleted successfully.`);
       setShowDeleteModal(false);
@@ -202,6 +263,15 @@ const RcefWithLackings = () => {
     try {
       const docRef = doc(db, 'rcef-lackings', selectedApplication.id);
       await updateDoc(docRef, editForm);
+
+      // Update corresponding fullcso document if exists
+      const fullCsoDoc = await findFullCsoByLackingsId(selectedApplication.id);
+      if (fullCsoDoc) {
+        const fullCsoRef = doc(db, 'fullcso-farmers', fullCsoDoc.id);
+        const { id, rcefLackingsId, source, ...updateData } = editForm;
+        await updateDoc(fullCsoRef, updateData);
+      }
+
       setData(data.map(item => (item.id === selectedApplication.id ? { ...item, ...editForm } : item)));
       setSuccess('Record updated successfully!');
       setShowEditModal(false);
@@ -213,9 +283,82 @@ const RcefWithLackings = () => {
     }
   };
 
+  // ---------- Restore to Accredited ----------
+  const handleRestore = async () => {
+    if (!selectedApplication) return;
+    try {
+      const { date_accredited, date_expiration } = restoreDates;
+      if (!date_accredited || !date_expiration) {
+        setError('Please provide both accreditation and expiration dates.');
+        return;
+      }
+
+      // Get next sequence number for the target province/municipality in rcef collection
+      const nextNo = await getNextAccreditedSequenceNumber(
+        selectedApplication.province,
+        selectedApplication.municipality
+      );
+
+      // Prepare data for accredited record (copy all fields except id and lackings specific)
+      const accreditedData = {
+        ...selectedApplication,
+        no: nextNo,
+        date_accredited,
+        date_expiration,
+        // Ensure we don't copy the lackings-specific id
+      };
+      delete accreditedData.id;
+
+      // Add to rcef collection
+      const accreditedDocRef = await addDoc(collection(db, 'rcef'), accreditedData);
+      const accreditedId = accreditedDocRef.id;
+
+      // Handle fullcso-farmers record
+      const fullCsoDoc = await findFullCsoByLackingsId(selectedApplication.id);
+      if (fullCsoDoc) {
+        // Update existing fullcso record to point to the new accredited record
+        const fullCsoRef = doc(db, 'fullcso-farmers', fullCsoDoc.id);
+        await updateDoc(fullCsoRef, {
+          source: 'rcef',
+          rcefId: accreditedId,
+          rcefLackingsId: null, // clear link to lackings
+          date_accredited,
+          date_expiration,
+        });
+      } else {
+        // Create new fullcso record
+        const fullCsoRecord = {
+          ...accreditedData,
+          source: 'rcef',
+          rcefId: accreditedId,
+        };
+        await addDoc(collection(db, 'fullcso-farmers'), fullCsoRecord);
+      }
+
+      // Delete the original lackings record
+      await deleteDoc(doc(db, 'rcef-lackings', selectedApplication.id));
+
+      // Update local state
+      setData(data.filter(item => item.id !== selectedApplication.id));
+      setSuccess(`Record "${selectedApplication.name}" has been restored to accredited.`);
+      setShowRestoreModal(false);
+      setSelectedApplication(null);
+      setRestoreDates({ date_accredited: '', date_expiration: '' });
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error) {
+      console.error('Restore error: ', error);
+      setError('Failed to restore record. Please try again.');
+    }
+  };
+
   const openDeleteModal = (row) => {
     setSelectedApplication(row);
     setShowDeleteModal(true);
+  };
+
+  const openRestoreModal = (row) => {
+    setSelectedApplication(row);
+    setShowRestoreModal(true);
   };
 
   const handleView = (row) => {
@@ -257,7 +400,7 @@ const RcefWithLackings = () => {
     return filtered;
   }, [data, searchTerm, filters]);
 
-  // ---------- Table Columns ----------
+  // ---------- Table Columns (with Restore button) ----------
   const columns = [
     {
       name: 'Association',
@@ -340,6 +483,13 @@ const RcefWithLackings = () => {
             <Edit className="h-4 w-4" />
           </button>
           <button
+            onClick={() => openRestoreModal(row)}
+            className="p-1.5 text-gray-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+            title="Restore to Accredited"
+          >
+            <ArrowRightCircle className="h-4 w-4" />
+          </button>
+          <button
             onClick={() => openDeleteModal(row)}
             className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
             title="Delete"
@@ -351,11 +501,11 @@ const RcefWithLackings = () => {
       ignoreRowClick: true,
       allowOverflow: true,
       button: true,
-      width: '140px',
+      width: '160px',
     },
   ];
 
-  // ---------- Excel Export (dynamic) ----------
+  // ---------- Excel Export (unchanged) ----------
   const exportToExcel = async () => {
     try {
       const workbook = new ExcelJS.Workbook();
@@ -1063,6 +1213,16 @@ const RcefWithLackings = () => {
               <button
                 onClick={() => {
                   setShowViewModal(false);
+                  openRestoreModal(selectedApplication);
+                }}
+                className="px-5 py-2.5 bg-amber-600 text-white font-medium rounded-xl hover:bg-amber-700 transition-colors"
+              >
+                <ArrowRightCircle className="h-4 w-4 inline mr-2" />
+                Restore to Accredited
+              </button>
+              <button
+                onClick={() => {
+                  setShowViewModal(false);
                   openDeleteModal(selectedApplication);
                 }}
                 className="px-5 py-2.5 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 transition-colors"
@@ -1103,6 +1263,66 @@ const RcefWithLackings = () => {
               className="px-6 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
             >
               Delete Record
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ---------- RESTORE MODAL ---------- */}
+      <Modal
+        isOpen={showRestoreModal}
+        onClose={() => setShowRestoreModal(false)}
+        title="Restore to Accredited"
+        size="sm"
+      >
+        <div className="py-4">
+          <p className="text-gray-600 mb-4">
+            Move this application to the accredited list. Please provide the accreditation and
+            expiration dates.
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Date Accredited *
+              </label>
+              <input
+                type="date"
+                value={restoreDates.date_accredited}
+                onChange={(e) =>
+                  setRestoreDates({ ...restoreDates, date_accredited: e.target.value })
+                }
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Date Expiration *
+              </label>
+              <input
+                type="date"
+                value={restoreDates.date_expiration}
+                onChange={(e) =>
+                  setRestoreDates({ ...restoreDates, date_expiration: e.target.value })
+                }
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200">
+            <button
+              onClick={() => {
+                setShowRestoreModal(false);
+                setRestoreDates({ date_accredited: '', date_expiration: '' });
+              }}
+              className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleRestore}
+              className="px-6 py-2.5 bg-amber-600 text-white font-medium rounded-lg hover:bg-amber-700 transition-colors"
+            >
+              Restore to Accredited
             </button>
           </div>
         </div>

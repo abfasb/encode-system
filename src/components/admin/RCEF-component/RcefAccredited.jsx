@@ -155,7 +155,6 @@ const RcefAccredited = () => {
     expirationYear: 'all'
   });
 
-  // ---------- Fetch Data from 'rcef' collection ----------
   const fetchData = async () => {
     try {
       setLoading(true);

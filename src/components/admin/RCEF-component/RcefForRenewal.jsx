@@ -8,7 +8,8 @@ import {
   doc,
   query,
   orderBy,
-  where
+  where,
+  limit
 } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import * as XLSXStyle from 'xlsx-js-style';
@@ -45,7 +46,8 @@ import {
   Layers,
   Send,
   AlertTriangle,
-  FileSearch
+  FileSearch,
+  ArrowRightCircle
 } from 'lucide-react';
 import { db } from '../../../config/firebase';
 
@@ -305,6 +307,7 @@ const RcefRenewal = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [selectedRecord, setSelectedRecord] = useState(null);
@@ -331,6 +334,10 @@ const RcefRenewal = () => {
     for_deliberation: 0,
     completed_documents: 0,
     pending_review: 0
+  });
+  const [restoreDates, setRestoreDates] = useState({
+    date_accredited: '',
+    date_expiration: ''
   });
 
   // ---------- FETCH DATA from 'rcef-renewal' ----------
@@ -385,6 +392,147 @@ const RcefRenewal = () => {
   useEffect(() => {
     fetchRcefData();
   }, [fetchRcefData]);
+
+  // ---------- HELPER: Get next sequence number for 'rcef' collection ----------
+  const getNextAccreditedSequenceNumber = async (province, municipality) => {
+    if (!province || !municipality) return '1';
+    try {
+      const q = query(
+        collection(db, 'rcef'),
+        where('province', '==', province),
+        where('municipality', '==', municipality),
+        orderBy('no', 'desc'),
+        limit(1)
+      );
+      const querySnapshot = await getDocs(q);
+      if (querySnapshot.empty) {
+        return '1';
+      }
+      const lastNo = querySnapshot.docs[0].data().no;
+      const lastNum = parseInt(lastNo, 10);
+      return isNaN(lastNum) ? '1' : (lastNum + 1).toString();
+    } catch (error) {
+      console.error('Error getting next sequence number for rcef:', error);
+      return '1';
+    }
+  };
+
+  // ---------- HELPER: Find corresponding fullcso document by renewalId ----------
+  const findFullCsoByRenewalId = async (renewalId) => {
+    const q = query(
+      collection(db, 'fullcso-farmers'),
+      where('rcefRenewalId', '==', renewalId),
+      limit(1)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.empty ? null : { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+  };
+
+  // ---------- RESTORE to Accredited ----------
+  const handleRestore = async () => {
+    if (!selectedRecord) return;
+    try {
+      const { date_accredited, date_expiration } = restoreDates;
+      if (!date_accredited || !date_expiration) {
+        setError('Please provide both accreditation and expiration dates.');
+        return;
+      }
+
+      // Get next sequence number for the target province/municipality in rcef collection
+      // Note: The renewal record might not have municipality; we need to extract from address or use a default
+      let municipality = '';
+      if (selectedRecord.basic_information?.address) {
+        // Attempt to extract municipality from address (simple heuristic)
+        const parts = selectedRecord.basic_information.address.split(',');
+        if (parts.length >= 2) {
+          municipality = parts[0].trim(); // assume municipality is first part
+        } else {
+          municipality = 'Unknown';
+        }
+      } else {
+        municipality = 'Unknown';
+      }
+
+      const nextNo = await getNextAccreditedSequenceNumber(
+        selectedRecord.province,
+        municipality
+      );
+
+      // Map renewal data to accredited fields
+      const accreditedData = {
+        no: nextNo,
+        province: selectedRecord.province,
+        municipality: municipality,
+        name: selectedRecord.basic_information?.name_of_organization || '',
+        contact_person: selectedRecord.basic_information?.contact_person || '',
+        contact_no: selectedRecord.basic_information?.contact_number || '',
+        address: selectedRecord.basic_information?.address || '',
+        date_accredited: date_accredited,
+        date_expiration: date_expiration,
+        date_application_received: selectedRecord.date_of_receipt || '',
+        type_fca: '', // not available in renewal
+        male_members: '',
+        female_members: '',
+        total_members: selectedRecord.basic_information?.no_of_members || '',
+        area_covered: '',
+        remarks: selectedRecord.remarks || '',
+        certificate_of_accreditation: '',
+        submitted_documents: '',
+        interventions: {
+          seeds: false,
+          mech: false,
+          credit: false,
+          extn: false
+        }
+      };
+
+      // Add to rcef collection
+      const accreditedDocRef = await addDoc(collection(db, 'rcef'), accreditedData);
+      const accreditedId = accreditedDocRef.id;
+
+      // Handle fullcso-farmers record
+      const fullCsoDoc = await findFullCsoByRenewalId(selectedRecord.id);
+      if (fullCsoDoc) {
+        // Update existing fullcso record to point to the new accredited record
+        const fullCsoRef = doc(db, 'fullcso-farmers', fullCsoDoc.id);
+        await updateDoc(fullCsoRef, {
+          source: 'rcef',
+          rcefId: accreditedId,
+          rcefRenewalId: null, // clear link to renewal
+          date_accredited,
+          date_expiration,
+        });
+      } else {
+        // Create new fullcso record
+        const fullCsoRecord = {
+          ...accreditedData,
+          source: 'rcef',
+          rcefId: accreditedId,
+        };
+        await addDoc(collection(db, 'fullcso-farmers'), fullCsoRecord);
+      }
+
+      // Delete the original renewal record
+      await deleteDoc(doc(db, 'rcef-renewal', selectedRecord.id));
+
+      // Update local state
+      setRcefData(rcefData.filter(item => item.id !== selectedRecord.id));
+      setSuccess(`Record "${selectedRecord.basic_information?.name_of_organization}" has been restored to accredited.`);
+      setShowRestoreModal(false);
+      setSelectedRecord(null);
+      setRestoreDates({ date_accredited: '', date_expiration: '' });
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error) {
+      console.error('Restore error: ', error);
+      setError('Failed to restore record. Please try again.');
+    }
+  };
+
+  const openRestoreModal = (record) => {
+    setSelectedRecord(record);
+    setShowViewModal(false);
+    setShowRestoreModal(true);
+  };
 
   // ---------- HANDLE INPUT CHANGE (handles nested paths) ----------
   const handleInputChange = (e) => {
@@ -1122,6 +1270,13 @@ const RcefRenewal = () => {
             <Edit className="h-4 w-4" />
           </button>
           <button
+            onClick={() => openRestoreModal(row)}
+            className="p-1.5 text-gray-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+            title="Restore to Accredited"
+          >
+            <ArrowRightCircle className="h-4 w-4" />
+          </button>
+          <button
             onClick={() => openDeleteModal(row)}
             className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
             title="Delete"
@@ -1176,6 +1331,14 @@ const RcefRenewal = () => {
             >
               <Download className="h-5 w-5 mr-2" />
               Export Excel
+            </button>
+
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="inline-flex items-center px-4 py-2.5 bg-purple-600 text-white font-semibold rounded-xl shadow-lg hover:bg-purple-700 transition-colors"
+            >
+              <Upload className="h-5 w-5 mr-2" />
+              Import Excel
             </button>
 
             <button
@@ -1911,6 +2074,16 @@ const RcefRenewal = () => {
               <button
                 onClick={() => {
                   setShowViewModal(false);
+                  openRestoreModal(selectedRecord);
+                }}
+                className="px-5 py-2.5 bg-amber-600 text-white font-medium rounded-xl hover:bg-amber-700 transition-colors"
+              >
+                <ArrowRightCircle className="h-4 w-4 inline mr-2" />
+                Restore to Accredited
+              </button>
+              <button
+                onClick={() => {
+                  setShowViewModal(false);
                   openDeleteModal(selectedRecord);
                 }}
                 className="px-5 py-2.5 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 transition-colors"
@@ -1950,6 +2123,65 @@ const RcefRenewal = () => {
               className="px-6 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
             >
               Delete Record
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ----- RESTORE MODAL ----- */}
+      <Modal
+        isOpen={showRestoreModal}
+        onClose={() => setShowRestoreModal(false)}
+        title="Restore to Accredited"
+        size="sm"
+      >
+        <div className="py-4">
+          <p className="text-gray-600 mb-4">
+            Move this renewal record to the accredited list. Please provide the accreditation and expiration dates.
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Date Accredited *
+              </label>
+              <input
+                type="date"
+                value={restoreDates.date_accredited}
+                onChange={(e) =>
+                  setRestoreDates({ ...restoreDates, date_accredited: e.target.value })
+                }
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Date Expiration *
+              </label>
+              <input
+                type="date"
+                value={restoreDates.date_expiration}
+                onChange={(e) =>
+                  setRestoreDates({ ...restoreDates, date_expiration: e.target.value })
+                }
+                className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200">
+            <button
+              onClick={() => {
+                setShowRestoreModal(false);
+                setRestoreDates({ date_accredited: '', date_expiration: '' });
+              }}
+              className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleRestore}
+              className="px-6 py-2.5 bg-amber-600 text-white font-medium rounded-lg hover:bg-amber-700 transition-colors"
+            >
+              Restore to Accredited
             </button>
           </div>
         </div>
@@ -2039,7 +2271,7 @@ const RcefRenewal = () => {
                       }
                     }}
                     className="hidden"
-                  />raf
+                  />
                 </label>
                 <p className="text-xs text-gray-500 mt-4">Supports .xlsx, .xls, .csv files</p>
               </div>
