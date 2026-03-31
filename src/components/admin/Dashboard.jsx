@@ -26,6 +26,20 @@ import {
   Cell,
 } from "recharts";
 
+// Predefined color palette for province bars (enterprise colors)
+const PROVINCE_COLORS = [
+  "#1E3A8A", // Dark Blue
+  "#0D9488", // Teal
+  "#059669", // Emerald
+  "#D97706", // Amber
+  "#DC2626", // Red
+  "#7C3AED", // Purple
+  "#EC489A", // Pink
+  "#14B8A6", // Turquoise
+  "#F97316", // Orange
+  "#6366F1", // Indigo
+];
+
 const LoadingSpinner = ({ message = "Loading..." }) => (
   <div className="flex flex-col items-center justify-center p-8">
     <div className="relative">
@@ -111,7 +125,6 @@ export default function Dashboard() {
     const activeAssociations = data.filter((item) => item.status === "Active").length;
     const provincesCount = new Set(data.map((item) => item.province)).size;
     const municipalitiesCount = new Set(data.map((item) => item.municipality)).size;
-    // Total differently-abled members (PWD)
     const totalDifferentlyAbled = data.reduce(
       (sum, item) => sum + (parseInt(item.members?.differently_abled) || 0),
       0
@@ -181,6 +194,7 @@ export default function Dashboard() {
 
   const regTypeColors = ["#10B981", "#3B82F6", "#F59E0B"];
 
+  // Province data for the third row (top 10 provinces with counts)
   const provinceData = useMemo(() => {
     const provinceCounts = data.reduce((acc, item) => {
       acc[item.province] = (acc[item.province] || 0) + 1;
@@ -192,6 +206,21 @@ export default function Dashboard() {
       .slice(0, 10);
   }, [data]);
 
+  // Custom tooltip formatter for the province chart
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-white shadow-lg rounded-lg p-3 border border-gray-200">
+          <p className="font-semibold text-gray-800">{label}</p>
+          <p className="text-green-600">
+            Associations: <span className="font-bold">{payload[0].value}</span>
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
   if (loading) {
     return (
       <div className="p-6 bg-gradient-to-br from-gray-50 to-gray-100 flex-1 overflow-auto min-h-screen flex items-center justify-center">
@@ -202,6 +231,7 @@ export default function Dashboard() {
 
   return (
     <div className="p-4 md:p-6 bg-gradient-to-br from-gray-50 to-gray-100 flex-1 overflow-auto min-h-screen">
+      {/* Header */}
       <div className="mb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -224,7 +254,7 @@ export default function Dashboard() {
 
       {/* Analytics Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-8 gap-4 mb-8">
-        <div className="bg-gradient-to-br from-white to-green-50 p-5 rounded-2xl shadow-lg border border-green-200">
+        <div className="group bg-gradient-to-br from-white to-green-50 p-5 rounded-2xl shadow-lg border border-green-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-600 mb-1">Total Associations</p>
@@ -232,13 +262,13 @@ export default function Dashboard() {
                 {analytics?.totalAssociations || 0}
               </h3>
             </div>
-            <div className="bg-green-100 p-3 rounded-xl">
+            <div className="bg-green-100 p-3 rounded-xl group-hover:bg-green-200 transition-colors">
               <FiUsers className="text-xl text-green-600" />
             </div>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-white to-blue-50 p-5 rounded-2xl shadow-lg border border-blue-200">
+        <div className="group bg-gradient-to-br from-white to-blue-50 p-5 rounded-2xl shadow-lg border border-blue-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-600 mb-1">Total Members</p>
@@ -246,13 +276,13 @@ export default function Dashboard() {
                 {analytics?.totalMembers?.toLocaleString() || 0}
               </h3>
             </div>
-            <div className="bg-blue-100 p-3 rounded-xl">
+            <div className="bg-blue-100 p-3 rounded-xl group-hover:bg-blue-200 transition-colors">
               <FiUsers className="text-xl text-blue-600" />
             </div>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-white to-emerald-50 p-5 rounded-2xl shadow-lg border border-emerald-200">
+        <div className="group bg-gradient-to-br from-white to-emerald-50 p-5 rounded-2xl shadow-lg border border-emerald-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-600 mb-1">Active</p>
@@ -260,13 +290,13 @@ export default function Dashboard() {
                 {analytics?.activeAssociations || 0}
               </h3>
             </div>
-            <div className="bg-emerald-100 p-3 rounded-xl">
+            <div className="bg-emerald-100 p-3 rounded-xl group-hover:bg-emerald-200 transition-colors">
               <FiCheckCircle className="text-xl text-emerald-600" />
             </div>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-white to-purple-50 p-5 rounded-2xl shadow-lg border border-purple-200">
+        <div className="group bg-gradient-to-br from-white to-purple-50 p-5 rounded-2xl shadow-lg border border-purple-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-600 mb-1">PWD Members</p>
@@ -274,13 +304,13 @@ export default function Dashboard() {
                 {analytics?.totalDifferentlyAbled?.toLocaleString() || 0}
               </h3>
             </div>
-            <div className="bg-purple-100 p-3 rounded-xl">
+            <div className="bg-purple-100 p-3 rounded-xl group-hover:bg-purple-200 transition-colors">
               <FiAlertCircle className="text-xl text-purple-600" />
             </div>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-white to-pink-50 p-5 rounded-2xl shadow-lg border border-pink-200">
+        <div className="group bg-gradient-to-br from-white to-pink-50 p-5 rounded-2xl shadow-lg border border-pink-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-600 mb-1">Young Farmers</p>
@@ -288,13 +318,13 @@ export default function Dashboard() {
                 {analytics?.youngFarmersTotal?.toLocaleString() || 0}
               </h3>
             </div>
-            <div className="bg-pink-100 p-3 rounded-xl">
+            <div className="bg-pink-100 p-3 rounded-xl group-hover:bg-pink-200 transition-colors">
               <FiUser className="text-xl text-pink-600" />
             </div>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-white to-indigo-50 p-5 rounded-2xl shadow-lg border border-indigo-200">
+        <div className="group bg-gradient-to-br from-white to-indigo-50 p-5 rounded-2xl shadow-lg border border-indigo-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-600 mb-1">IPs</p>
@@ -302,13 +332,13 @@ export default function Dashboard() {
                 {analytics?.ipsTotal?.toLocaleString() || 0}
               </h3>
             </div>
-            <div className="bg-indigo-100 p-3 rounded-xl">
+            <div className="bg-indigo-100 p-3 rounded-xl group-hover:bg-indigo-200 transition-colors">
               <FiUsers className="text-xl text-indigo-600" />
             </div>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-white to-orange-50 p-5 rounded-2xl shadow-lg border border-orange-200">
+        <div className="group bg-gradient-to-br from-white to-orange-50 p-5 rounded-2xl shadow-lg border border-orange-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-600 mb-1">Senior Citizens</p>
@@ -316,13 +346,13 @@ export default function Dashboard() {
                 {analytics?.seniorCitizensTotal?.toLocaleString() || 0}
               </h3>
             </div>
-            <div className="bg-orange-100 p-3 rounded-xl">
+            <div className="bg-orange-100 p-3 rounded-xl group-hover:bg-orange-200 transition-colors">
               <FiUser className="text-xl text-orange-600" />
             </div>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-white to-cyan-50 p-5 rounded-2xl shadow-lg border border-cyan-200">
+        <div className="group bg-gradient-to-br from-white to-cyan-50 p-5 rounded-2xl shadow-lg border border-cyan-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-600 mb-1">Municipalities</p>
@@ -330,15 +360,16 @@ export default function Dashboard() {
                 {analytics?.municipalitiesCount || 0}
               </h3>
             </div>
-            <div className="bg-cyan-100 p-3 rounded-xl">
+            <div className="bg-cyan-100 p-3 rounded-xl group-hover:bg-cyan-200 transition-colors">
               <FiBarChart2 className="text-xl text-cyan-600" />
             </div>
           </div>
         </div>
       </div>
 
+      {/* Row 1 & 2: Group Categories & Status */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 hover:shadow-xl transition-all duration-300">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-lg font-bold text-gray-800">Group Category Distribution</h3>
@@ -359,7 +390,7 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 hover:shadow-xl transition-all duration-300">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-lg font-bold text-gray-800">Status Overview</h3>
@@ -391,7 +422,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 mb-8">
+      {/* Row 2: Registration Type */}
+      <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 mb-8 hover:shadow-xl transition-all duration-300">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-lg font-bold text-gray-800">MIMAROPA Registration Type</h3>
@@ -421,11 +453,10 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Third Row: Top Provinces */}
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
+      <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 hover:shadow-xl transition-all duration-300">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-lg font-bold text-gray-800">FCAs</h3>
+            <h3 className="text-lg font-bold text-gray-800">FCAs by Province</h3>
             <p className="text-sm text-gray-500">Top 10 provinces with most associations</p>
           </div>
           <div className="bg-purple-100 p-2 rounded-xl">
@@ -438,8 +469,12 @@ export default function Dashboard() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="province" angle={-45} textAnchor="end" height={100} tick={{ fontSize: 12 }} />
               <YAxis />
-              <Tooltip />
-              <Bar dataKey="count" fill="#6366F1" />
+              <Tooltip content={<CustomTooltip />} />
+              <Bar dataKey="count">
+                {provinceData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={PROVINCE_COLORS[index % PROVINCE_COLORS.length]} />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         ) : (

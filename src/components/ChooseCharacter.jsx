@@ -107,7 +107,6 @@ export default function ChooseCharacter() {
     setPasswordError("");
   };
 
-  // Verify password and proceed
   const verifyPassword = () => {
     if (!selectedCharacter) return;
 
