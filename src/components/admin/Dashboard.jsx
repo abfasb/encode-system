@@ -9,6 +9,7 @@ import {
   FiBarChart2,
   FiPieChart,
   FiFileText,
+  FiX,
 } from "react-icons/fi";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../config/firebase";
@@ -26,7 +27,7 @@ import {
   Cell,
 } from "recharts";
 
-// Predefined color palette for province bars (enterprise colors)
+// Predefined color palette for province bars
 const PROVINCE_COLORS = [
   "#1E3A8A", // Dark Blue
   "#0D9488", // Teal
@@ -50,9 +51,37 @@ const LoadingSpinner = ({ message = "Loading..." }) => (
   </div>
 );
 
+// Modal Component
+const Modal = ({ isOpen, onClose, title, children, size = "lg" }) => {
+  if (!isOpen) return null;
+  const sizeClasses = {
+    sm: "max-w-md",
+    md: "max-w-2xl",
+    lg: "max-w-4xl",
+    xl: "max-w-6xl",
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto bg-black bg-opacity-50">
+      <div className={`relative bg-white rounded-2xl shadow-2xl w-full mx-4 ${sizeClasses[size]}`}>
+        <div className="sticky top-0 bg-white rounded-t-2xl px-6 py-4 border-b border-gray-200 z-10">
+          <div className="flex items-center justify-between">
+            <h3 className="text-2xl font-bold text-gray-900">{title}</h3>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-500 transition-colors p-1">
+              <FiX className="h-6 w-6" />
+            </button>
+          </div>
+        </div>
+        <div className="max-h-[70vh] overflow-y-auto p-6">{children}</div>
+      </div>
+    </div>
+  );
+};
+
 export default function Dashboard() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedProvince, setSelectedProvince] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -154,7 +183,7 @@ export default function Dashboard() {
     };
   }, [data]);
 
-  // Group category counts for bar chart (based on association counts)
+  // Group category counts for bar chart
   const groupCategoryCounts = useMemo(() => {
     const counts = {
       "Women-Led": data.filter((item) => item.groupCategories?.womenLed).length,
@@ -206,7 +235,39 @@ export default function Dashboard() {
       .slice(0, 10);
   }, [data]);
 
-  // Custom tooltip formatter for the province chart
+  // Handle province bar click
+  const handleProvinceClick = (provinceName) => {
+    setSelectedProvince(provinceName);
+    setModalOpen(true);
+  };
+
+  // Get associations for selected province
+  const provinceAssociations = useMemo(() => {
+    if (!selectedProvince) return [];
+    return data.filter((item) => item.province === selectedProvince);
+  }, [data, selectedProvince]);
+
+  // Registration type breakdown for selected province
+  const provinceRegTypeCounts = useMemo(() => {
+    if (!selectedProvince) return [];
+    const counts = {
+      CDA: 0,
+      SEC: 0,
+      DOLE: 0,
+    };
+    provinceAssociations.forEach((assoc) => {
+      const type = assoc.registration_type?.toUpperCase();
+      if (type === "CDA") counts.CDA++;
+      else if (type === "SEC") counts.SEC++;
+      else if (type === "DOLE") counts.DOLE++;
+    });
+    return Object.entries(counts)
+      .filter(([_, count]) => count > 0)
+      .map(([name, value]) => ({ name, value }));
+  }, [provinceAssociations]);
+
+  const provinceTotalAssociations = provinceAssociations.length;
+
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
@@ -215,6 +276,7 @@ export default function Dashboard() {
           <p className="text-green-600">
             Associations: <span className="font-bold">{payload[0].value}</span>
           </p>
+          <p className="text-xs text-gray-500 mt-1">Click to view details</p>
         </div>
       );
     }
@@ -236,7 +298,7 @@ export default function Dashboard() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-green-800 to-green-600 bg-clip-text text-transparent mb-2">
-              Agriculture Associations Dashboard
+              MIMAROPA FCAs Registration
             </h1>
             <p className="text-gray-600">Enterprise‑level analytics and visualizations</p>
           </div>
@@ -254,6 +316,7 @@ export default function Dashboard() {
 
       {/* Analytics Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-8 gap-4 mb-8">
+        {/* ... (same cards as before) ... */}
         <div className="group bg-gradient-to-br from-white to-green-50 p-5 rounded-2xl shadow-lg border border-green-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
           <div className="flex items-center justify-between">
             <div>
@@ -453,11 +516,12 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* Third Row: FCAs by Province (clickable bars) */}
       <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 hover:shadow-xl transition-all duration-300">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-lg font-bold text-gray-800">FCAs by Province</h3>
-            <p className="text-sm text-gray-500">Top 10 provinces with most associations</p>
+            <p className="text-sm text-gray-500">Click on any bar to see detailed associations</p>
           </div>
           <div className="bg-purple-100 p-2 rounded-xl">
             <FiBarChart2 className="text-purple-600" />
@@ -470,9 +534,16 @@ export default function Dashboard() {
               <XAxis dataKey="province" angle={-45} textAnchor="end" height={100} tick={{ fontSize: 12 }} />
               <YAxis />
               <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="count">
+              <Bar
+                dataKey="count"
+                onClick={(data) => handleProvinceClick(data.province)}
+                cursor="pointer"
+              >
                 {provinceData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={PROVINCE_COLORS[index % PROVINCE_COLORS.length]} />
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={PROVINCE_COLORS[index % PROVINCE_COLORS.length]}
+                  />
                 ))}
               </Bar>
             </BarChart>
@@ -481,6 +552,121 @@ export default function Dashboard() {
           <div className="text-center py-12 text-gray-500">No province data available</div>
         )}
       </div>
+
+      {/* Modal for Province Details */}
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={`Associations in ${selectedProvince || ""}`}
+        size="xl"
+      >
+        {selectedProvince && (
+          <div>
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div className="bg-gradient-to-br from-green-50 to-white p-4 rounded-xl border border-green-200">
+                <p className="text-sm text-gray-600">Total FCAs</p>
+                <p className="text-2xl font-bold text-gray-800">{provinceTotalAssociations}</p>
+              </div>
+              <div className="bg-gradient-to-br from-blue-50 to-white p-4 rounded-xl border border-blue-200">
+                <p className="text-sm text-gray-600">Registration Types</p>
+                <div className="flex gap-4 mt-2">
+                  {provinceRegTypeCounts.map((item) => (
+                    <div key={item.name}>
+                      <span
+                        className="inline-block w-3 h-3 rounded-full mr-1"
+                        style={{
+                          backgroundColor:
+                            item.name === "CDA"
+                              ? "#10B981"
+                              : item.name === "SEC"
+                              ? "#3B82F6"
+                              : "#F59E0B",
+                        }}
+                      ></span>
+                      <span className="text-sm font-medium">
+                        {item.name}: {item.value}
+                      </span>
+                    </div>
+                  ))}
+                  {provinceRegTypeCounts.length === 0 && (
+                    <span className="text-gray-500 text-sm">No registration data</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Associations Table */}
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Association Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Municipality
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Registration Type
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Total Members
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-100">
+                  {provinceAssociations.map((assoc, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {assoc.name || "—"}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {assoc.municipality || "—"}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            assoc.registration_type?.toUpperCase() === "CDA"
+                              ? "bg-green-100 text-green-800"
+                              : assoc.registration_type?.toUpperCase() === "SEC"
+                              ? "bg-blue-100 text-blue-800"
+                              : assoc.registration_type?.toUpperCase() === "DOLE"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {assoc.registration_type || "—"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            assoc.status === "Active"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {assoc.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {assoc.totalMembers?.toLocaleString() || 0}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {provinceAssociations.length === 0 && (
+                <div className="text-center py-8 text-gray-500">No associations found for this province.</div>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <style jsx>{`
         @keyframes spin {

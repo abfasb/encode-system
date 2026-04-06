@@ -33,7 +33,10 @@ import {
   Clock,
   Plus,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Bell,
+  Calendar,
+  AlertTriangle
 } from 'lucide-react';
 import { db } from '../../../config/firebase';
 
@@ -66,6 +69,27 @@ const getYearFromDate = (dateString) => {
   return date.getFullYear();
 };
 
+// ---------- Helper: Check if expiration is within next 90 days ----------
+const isExpiringSoon = (expirationDateString) => {
+  if (!expirationDateString) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const expDate = new Date(expirationDateString);
+  expDate.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24));
+  return diffDays >= 0 && diffDays <= 90;
+};
+
+// ---------- Helper: Get days until expiration ----------
+const getDaysUntilExpiration = (expirationDateString) => {
+  if (!expirationDateString) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const expDate = new Date(expirationDateString);
+  expDate.setHours(0, 0, 0, 0);
+  return Math.ceil((expDate - today) / (1000 * 60 * 60 * 24));
+};
+
 // ---------- Helper: Normalize string (trim, title case) ----------
 const normalizeString = (str) => {
   if (!str) return '';
@@ -80,7 +104,7 @@ const normalizeString = (str) => {
 // ---------- Helper: Normalize province name to title case ----------
 const normalizeProvince = (prov) => normalizeString(prov);
 
-// ---------- Modal Component (unchanged) ----------
+// ---------- Modal Component ----------
 const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   if (!isOpen) return null;
 
@@ -161,6 +185,14 @@ const RcefAccredited = () => {
     expirationYear: 'all'
   });
 
+  // Notification states
+  const [showNotificationBanner, setShowNotificationBanner] = useState(true);
+  const [dismissedNotifications, setDismissedNotifications] = useState(() => {
+    const saved = localStorage.getItem('dismissedRcefRenewalNotifications');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [showExpiringModal, setShowExpiringModal] = useState(false);
+
   // ---------- Data Fetching ----------
   const fetchData = async () => {
     try {
@@ -185,9 +217,43 @@ const RcefAccredited = () => {
     fetchData();
   }, []);
 
-  // ---------- Grouping Logic (with normalization) ----------
+  // List of expiring soon records (within 90 days)
+  const expiringSoonRecords = useMemo(() => {
+    return data.filter(item => isExpiringSoon(item.date_expiration));
+  }, [data]);
+
+  // Filter out dismissed notifications
+  const visibleExpiringRecords = useMemo(() => {
+    return expiringSoonRecords.filter(record => !dismissedNotifications.includes(record.id));
+  }, [expiringSoonRecords, dismissedNotifications]);
+
+  const dismissNotification = (id) => {
+    const newDismissed = [...dismissedNotifications, id];
+    setDismissedNotifications(newDismissed);
+    localStorage.setItem('dismissedRcefRenewalNotifications', JSON.stringify(newDismissed));
+  };
+
+  const dismissAllNotifications = () => {
+    const allIds = expiringSoonRecords.map(r => r.id);
+    setDismissedNotifications(allIds);
+    localStorage.setItem('dismissedRcefRenewalNotifications', JSON.stringify(allIds));
+  };
+
+  const resetNotifications = () => {
+    setDismissedNotifications([]);
+    localStorage.removeItem('dismissedRcefRenewalNotifications');
+    setShowNotificationBanner(true);
+  };
+
+  // Edit a single record (opens modal) – used for renewal
+  const handleEdit = (record) => {
+    setSelectedApplication(record);
+    setEditForm(record);
+    setShowEditModal(true);
+  };
+
+  // ---------- Grouping Logic ----------
   const groupedData = useMemo(() => {
-    // First, apply filters to original data
     let filtered = [...data];
 
     if (searchTerm) {
@@ -223,7 +289,6 @@ const RcefAccredited = () => {
       });
     }
 
-    // Group by normalized name + province + municipality
     const groups = new Map();
     filtered.forEach(item => {
       const normalizedName = normalizeString(item.name);
@@ -232,11 +297,10 @@ const RcefAccredited = () => {
       const key = `${normalizedName}|${normalizedProv}|${normalizedMun}`;
       if (!groups.has(key)) {
         groups.set(key, {
-          id: key, // composite key
+          id: key,
           name: normalizedName,
           province: normalizedProv,
           municipality: normalizedMun,
-          // Aggregated fields
           contact_person: null,
           contact_no: null,
           male_members: 0,
@@ -248,42 +312,30 @@ const RcefAccredited = () => {
           certificates: new Set(),
           documents: new Set(),
           remarks: new Set(),
-          records: [] // store original records
+          records: []
         });
       }
       const group = groups.get(key);
       group.records.push(item);
-
-      // Sum numeric fields
       group.male_members += item.male_members || 0;
       group.female_members += item.female_members || 0;
       group.total_members += item.total_members || 0;
       group.area_covered += parseFloat(item.area_covered) || 0;
-
-      // Type
       if (item.type_fca) group.type_fca.add(item.type_fca);
-
-      // Interventions (OR)
       if (item.interventions) {
         group.interventions.seeds = group.interventions.seeds || item.interventions.seeds;
         group.interventions.mech = group.interventions.mech || item.interventions.mech;
         group.interventions.credit = group.interventions.credit || item.interventions.credit;
         group.interventions.extn = group.interventions.extn || item.interventions.extn;
       }
-
-      // Contact info – take the latest (by date_accredited)
       if (item.contact_person) group.contact_person = item.contact_person;
       if (item.contact_no) group.contact_no = item.contact_no;
-
-      // Certificates, documents, remarks
       if (item.certificate_of_accreditation) group.certificates.add(item.certificate_of_accreditation);
       if (item.submitted_documents) group.documents.add(item.submitted_documents);
       if (item.remarks) group.remarks.add(item.remarks);
     });
 
-    // Convert sets to strings for display
     const result = Array.from(groups.values()).map(group => {
-      // Sort records by date_accredited descending (most recent first)
       const sortedRecords = [...group.records].sort((a, b) => {
         const dateA = a.date_accredited ? new Date(a.date_accredited) : new Date(0);
         const dateB = b.date_accredited ? new Date(b.date_accredited) : new Date(0);
@@ -299,12 +351,11 @@ const RcefAccredited = () => {
       };
     });
 
-    // Sort groups by name
     result.sort((a, b) => a.name.localeCompare(b.name));
     return result;
   }, [data, searchTerm, filters]);
 
-  // ---------- Stats (based on original data) ----------
+  // ---------- Stats ----------
   const stats = useMemo(() => {
     const totalAssociations = data.length;
     const totalMale = data.reduce((acc, item) => acc + (item.male_members || 0), 0);
@@ -314,6 +365,7 @@ const RcefAccredited = () => {
     const provinces = [...new Set(data.map(item => normalizeProvince(item.province)).filter(Boolean))].length;
     const withSeeds = data.filter(item => item.interventions?.seeds).length;
     const withMech = data.filter(item => item.interventions?.mech).length;
+    const expiringSoonCount = expiringSoonRecords.length;
 
     return {
       totalAssociations,
@@ -323,11 +375,12 @@ const RcefAccredited = () => {
       totalArea,
       provinces,
       withSeeds,
-      withMech
+      withMech,
+      expiringSoonCount
     };
-  }, [data]);
+  }, [data, expiringSoonRecords]);
 
-  // ---------- Filter options (from original data) ----------
+  // ---------- Filter options ----------
   const provinceOptions = useMemo(() => {
     const normSet = new Set();
     data.forEach(item => {
@@ -394,24 +447,15 @@ const RcefAccredited = () => {
     return snapshot.empty ? null : { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
   };
 
-  // Edit a single record (opens modal)
-  const handleEdit = (record) => {
-    setSelectedApplication(record);
-    setEditForm(record);
-    setShowEditModal(true);
-  };
-
   // Delete a single record
   const handleDelete = async (id, name) => {
     if (!id) return;
     try {
       await deleteDoc(doc(db, 'rcef', id));
-
       const fullCsoDoc = await findFullCsoByRcefId(id);
       if (fullCsoDoc) {
         await deleteDoc(doc(db, 'fullcso-farmers', fullCsoDoc.id));
       }
-
       setData(data.filter(item => item.id !== id));
       setSuccess(`Application "${name}" deleted successfully.`);
       setShowDeleteModal(false);
@@ -423,16 +467,14 @@ const RcefAccredited = () => {
     }
   };
 
-  // Delete entire group (all records with same name/province/municipality)
+  // Delete entire group
   const handleDeleteGroup = async (group) => {
     if (!group.records || group.records.length === 0) return;
     const confirmDelete = window.confirm(
       `Are you sure you want to delete ALL ${group.records.length} accreditation records for "${group.name}"? This action cannot be undone.`
     );
     if (!confirmDelete) return;
-
     try {
-      // Delete each record in the group
       for (const record of group.records) {
         await deleteDoc(doc(db, 'rcef', record.id));
         const fullCsoDoc = await findFullCsoByRcefId(record.id);
@@ -453,14 +495,12 @@ const RcefAccredited = () => {
     try {
       const rcefRef = doc(db, 'rcef', selectedApplication.id);
       await updateDoc(rcefRef, editForm);
-
       const fullCsoDoc = await findFullCsoByRcefId(selectedApplication.id);
       if (fullCsoDoc) {
         const fullCsoRef = doc(db, 'fullcso-farmers', fullCsoDoc.id);
         const { id, rcefId, source, ...updateData } = editForm;
         await updateDoc(fullCsoRef, updateData);
       }
-
       setData(data.map(item => (item.id === selectedApplication.id ? { ...item, ...editForm } : item)));
       setSuccess('Application updated successfully!');
       setShowEditModal(false);
@@ -484,7 +524,6 @@ const RcefAccredited = () => {
       }
 
       const nextNo = await getNextSequenceNumber(createForm.province, createForm.municipality);
-
       const newRecord = {
         ...createForm,
         no: nextNo,
@@ -496,12 +535,7 @@ const RcefAccredited = () => {
 
       const rcefDocRef = await addDoc(collection(db, 'rcef'), newRecord);
       const rcefId = rcefDocRef.id;
-
-      const fullCsoRecord = {
-        ...newRecord,
-        source: 'rcef',
-        rcefId: rcefId,
-      };
+      const fullCsoRecord = { ...newRecord, source: 'rcef', rcefId: rcefId };
       await addDoc(collection(db, 'fullcso-farmers'), fullCsoRecord);
 
       setData([...data, { id: rcefId, ...newRecord }]);
@@ -558,7 +592,7 @@ const RcefAccredited = () => {
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Members</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Interventions</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-               </tr>
+              </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
               {records.map(record => (
@@ -610,7 +644,7 @@ const RcefAccredited = () => {
     );
   };
 
-  // ---------- Table Columns (for grouped rows) ----------
+  // ---------- Table Columns ----------
   const columns = [
     {
       name: 'Association',
@@ -693,7 +727,6 @@ const RcefAccredited = () => {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              // Edit the most recent record in the group
               const latestRecord = row.records[0];
               setSelectedApplication(latestRecord);
               setEditForm(latestRecord);
@@ -735,7 +768,6 @@ const RcefAccredited = () => {
 
   // ---------- Export to Excel (unchanged) ----------
   const exportToExcel = async () => {
-    // (same as before, unchanged)
     try {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Farmers Cooperative');
@@ -823,16 +855,12 @@ const RcefAccredited = () => {
         });
       };
 
-      // Group original data for export (not grouped)
       const grouped = {};
       data.forEach(item => {
         const prov = normalizeProvince(item.province) || 'Unknown';
         const mun = normalizeString(item.municipality) || 'Unknown';
         if (!grouped[prov]) {
-          grouped[prov] = {
-            originalName: prov,
-            municipalities: {}
-          };
+          grouped[prov] = { originalName: prov, municipalities: {} };
         }
         if (!grouped[prov].municipalities[mun]) {
           grouped[prov].municipalities[mun] = [];
@@ -852,21 +880,12 @@ const RcefAccredited = () => {
 
       sortedProvinces.forEach(prov => {
         addProvinceRow(prov);
-
         const munObj = grouped[prov].municipalities;
         const sortedMunicipalities = Object.keys(munObj).sort();
-
         sortedMunicipalities.forEach(mun => {
           addMunicipalityRow(mun);
-
-          const sortedItems = [...munObj[mun]].sort((a, b) => {
-            const numA = parseInt(a.no, 10) || 0;
-            const numB = parseInt(b.no, 10) || 0;
-            return numA - numB;
-          });
-
+          const sortedItems = [...munObj[mun]].sort((a, b) => (parseInt(a.no, 10) || 0) - (parseInt(b.no, 10) || 0));
           let seqNo = 1;
-
           sortedItems.forEach(item => {
             const row = worksheet.addRow([
               '',
@@ -891,13 +910,11 @@ const RcefAccredited = () => {
               item.certificate_of_accreditation || '',
               item.submitted_documents || ''
             ]);
-
             row.eachCell(cell => {
               cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
               cell.font = { name: 'Times New Roman', size: 10 };
               cell.alignment = { vertical: 'middle', wrapText: true };
             });
-
             [2, 4, 5, 6, 8, 9, 10, 11, 15, 16, 17, 18].forEach(col => {
               const cell = row.getCell(col);
               if (cell) cell.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -922,10 +939,7 @@ const RcefAccredited = () => {
       const intervention = name.split('.')[1];
       setEditForm(prev => ({
         ...prev,
-        interventions: {
-          ...(prev.interventions || {}),
-          [intervention]: checked
-        }
+        interventions: { ...(prev.interventions || {}), [intervention]: checked }
       }));
     } else {
       setEditForm(prev => ({ ...prev, [name]: value }));
@@ -938,10 +952,7 @@ const RcefAccredited = () => {
       const intervention = name.split('.')[1];
       setCreateForm(prev => ({
         ...prev,
-        interventions: {
-          ...(prev.interventions || {}),
-          [intervention]: checked
-        }
+        interventions: { ...(prev.interventions || {}), [intervention]: checked }
       }));
     } else {
       setCreateForm(prev => ({ ...prev, [name]: value }));
@@ -964,16 +975,108 @@ const RcefAccredited = () => {
   // ---------- Render ----------
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+      {/* Renewal Notification Banner */}
+      {visibleExpiringRecords.length > 0 && showNotificationBanner && (
+        <div className="mb-6 bg-amber-50 border-l-4 border-amber-500 rounded-lg shadow-md overflow-hidden">
+          <div className="p-4">
+            <div className="flex items-start justify-between">
+              <div className="flex items-start space-x-3">
+                <div className="flex-shrink-0">
+                  <Bell className="h-5 w-5 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-amber-800">Renewal Reminder</h3>
+                  <p className="text-sm text-amber-700 mt-1">
+                    {visibleExpiringRecords.length} accreditation{visibleExpiringRecords.length !== 1 ? 's' : ''} require renewal within 90 days.
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {visibleExpiringRecords.slice(0, 5).map(record => {
+                      const daysLeft = getDaysUntilExpiration(record.date_expiration);
+                      return (
+                        <div key={record.id} className="flex items-center justify-between bg-white rounded-lg p-2 shadow-sm">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-gray-900">{record.name}</p>
+                            <p className="text-xs text-gray-500">Expires: {formatDate(record.date_expiration)} ({daysLeft} days left)</p>
+                          </div>
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => handleEdit(record)}
+                              className="px-3 py-1 text-xs bg-amber-600 text-white rounded-md hover:bg-amber-700"
+                            >
+                              Renew Now
+                            </button>
+                            <button
+                              onClick={() => dismissNotification(record.id)}
+                              className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700"
+                            >
+                              Dismiss
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {visibleExpiringRecords.length > 5 && (
+                      <p className="text-xs text-amber-600">+{visibleExpiringRecords.length - 5} more...</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="flex space-x-2">
+                <button onClick={() => setShowExpiringModal(true)} className="text-xs text-amber-700 hover:text-amber-900 font-medium">
+                  View All
+                </button>
+                <button onClick={dismissAllNotifications} className="text-xs text-amber-700 hover:text-amber-900 font-medium">
+                  Dismiss All
+                </button>
+                <button onClick={() => setShowNotificationBanner(false)} className="text-gray-400 hover:text-gray-500">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal for all expiring records */}
+      <Modal isOpen={showExpiringModal} onClose={() => setShowExpiringModal(false)} title="Accreditations Requiring Renewal" size="lg">
+        <div className="space-y-4">
+          {expiringSoonRecords.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">No records expiring soon.</div>
+          ) : (
+            expiringSoonRecords.map(record => {
+              const daysLeft = getDaysUntilExpiration(record.date_expiration);
+              return (
+                <div key={record.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                  <div>
+                    <p className="font-semibold text-gray-900">{record.name}</p>
+                    <p className="text-sm text-gray-500">Province: {record.province || 'N/A'}</p>
+                    <p className="text-xs text-amber-600">Expires: {formatDate(record.date_expiration)} ({daysLeft} days left)</p>
+                  </div>
+                  <div className="flex space-x-2">
+                    <button onClick={() => { setShowExpiringModal(false); handleEdit(record); }} className="px-3 py-1.5 bg-amber-600 text-white rounded-md text-sm hover:bg-amber-700">Renew</button>
+                    <button onClick={() => { dismissNotification(record.id); }} className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-100">Dismiss</button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+          {expiringSoonRecords.length > 0 && (
+            <div className="pt-4 border-t border-gray-200 flex justify-end">
+              <button onClick={dismissAllNotifications} className="px-4 py-2 text-sm text-red-600 hover:text-red-800">Dismiss All</button>
+            </div>
+          )}
+        </div>
+      </Modal>
+
       {/* Header */}
       <div className="mb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-gray-900">RCEF Accredited CSO Farmers</h1>
+            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-green-800 to-green-600 bg-clip-text text-transparent">RCEF Accredited CSO Farmers</h1>
             <p className="text-gray-600 mt-2">
               Farmers cooperatives and associations accredited under RCEF
             </p>
           </div>
-
           <div className="flex flex-wrap gap-3">
             <button
               onClick={() => setShowCreateModal(true)}
@@ -982,7 +1085,6 @@ const RcefAccredited = () => {
               <Plus className="h-5 w-5 mr-2" />
               Create New
             </button>
-
             <button
               onClick={exportToExcel}
               className="inline-flex items-center px-4 py-2.5 bg-green-600 text-white font-semibold rounded-xl shadow-lg hover:bg-green-700 transition-colors"
@@ -990,7 +1092,6 @@ const RcefAccredited = () => {
               <Download className="h-5 w-5 mr-2" />
               Export Excel
             </button>
-
             <button
               onClick={fetchData}
               className="inline-flex items-center px-4 py-2.5 bg-gray-600 text-white font-semibold rounded-xl shadow-lg hover:bg-gray-700 transition-colors"
@@ -1004,7 +1105,7 @@ const RcefAccredited = () => {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="bg-blue-500 rounded-2xl shadow-xl p-6 text-white">
+        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl shadow-xl p-6 text-white transition-transform hover:scale-105">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-blue-100 text-sm font-medium">Total Associations</p>
@@ -1017,7 +1118,7 @@ const RcefAccredited = () => {
           </div>
         </div>
 
-        <div className="bg-amber-500 rounded-2xl shadow-xl p-6 text-white">
+        <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-2xl shadow-xl p-6 text-white transition-transform hover:scale-105">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-amber-100 text-sm font-medium">Total Members</p>
@@ -1030,7 +1131,7 @@ const RcefAccredited = () => {
           </div>
         </div>
 
-        <div className="bg-purple-500 rounded-2xl shadow-xl p-6 text-white">
+        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl shadow-xl p-6 text-white transition-transform hover:scale-105">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-purple-100 text-sm font-medium">Area Covered</p>
@@ -1043,17 +1144,19 @@ const RcefAccredited = () => {
           </div>
         </div>
 
-        <div className="bg-green-500 rounded-2xl shadow-xl p-6 text-white">
+        <div
+          onClick={() => setShowExpiringModal(true)}
+          className="bg-gradient-to-br from-red-500 to-red-600 rounded-2xl shadow-xl p-6 text-white transition-transform hover:scale-105 cursor-pointer"
+        >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-green-100 text-sm font-medium">Interventions</p>
-              <p className="text-xl font-bold mt-2">Seeds: {stats.withSeeds}</p>
-              <p className="text-xl font-bold">Mech: {stats.withMech}</p>
+              <p className="text-red-100 text-sm font-medium">Expiring Soon</p>
+              <p className="text-3xl font-bold mt-2">{stats.expiringSoonCount}</p>
             </div>
-            <Building className="h-12 w-12 opacity-80" />
+            <Calendar className="h-12 w-12 opacity-80" />
           </div>
-          <div className="mt-4 pt-4 border-t border-green-400">
-            <p className="text-green-100 text-sm">Associations with support</p>
+          <div className="mt-4 pt-4 border-t border-red-400">
+            <p className="text-red-100 text-sm">Within 90 days</p>
           </div>
         </div>
       </div>
@@ -1106,7 +1209,6 @@ const RcefAccredited = () => {
               )}
             </div>
           </div>
-
           <div className="flex flex-wrap gap-3">
             <select
               value={filters.province}
@@ -1118,7 +1220,6 @@ const RcefAccredited = () => {
                 <option key={province} value={province}>{province}</option>
               ))}
             </select>
-
             <select
               value={filters.accreditedYear}
               onChange={(e) => setFilters(prev => ({ ...prev, accreditedYear: e.target.value }))}
@@ -1129,7 +1230,6 @@ const RcefAccredited = () => {
                 <option key={year} value={year}>{year}</option>
               ))}
             </select>
-
             <select
               value={filters.expirationYear}
               onChange={(e) => setFilters(prev => ({ ...prev, expirationYear: e.target.value }))}
@@ -1142,7 +1242,6 @@ const RcefAccredited = () => {
             </select>
           </div>
         </div>
-
         <div className="mt-4 flex items-center justify-between">
           <div className="text-gray-600">
             Showing <span className="font-semibold">{groupedData.length}</span> associations (from <span className="font-semibold">{data.length}</span> total accreditation records)
@@ -1234,7 +1333,6 @@ const RcefAccredited = () => {
       >
         <form onSubmit={(e) => { e.preventDefault(); handleCreate(); }} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Province dropdown */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Province *</label>
               <select
@@ -1699,7 +1797,7 @@ const RcefAccredited = () => {
         </form>
       </Modal>
 
-      {/* ---------- VIEW MODAL (shows group details) ---------- */}
+      {/* View Modal */}
       <Modal
         isOpen={showViewModal}
         onClose={() => setShowViewModal(false)}
@@ -1823,15 +1921,11 @@ const RcefAccredited = () => {
                 </div>
               )}
             </div>
-
-            <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
-              {/* Actions left empty as they are handled elsewhere */}
-            </div>
           </div>
         )}
       </Modal>
 
-      {/* ---------- DELETE MODAL (for individual records) ---------- */}
+      {/* Delete Modal */}
       <Modal
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}

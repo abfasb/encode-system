@@ -40,6 +40,7 @@ import {
   FiTag,
   FiBook,
   FiBriefcase,
+  FiDollarSign,
 } from "react-icons/fi";
 import { collection, getDocs, doc, setDoc, updateDoc, addDoc } from "firebase/firestore";
 import { db } from "../../config/firebase";
@@ -63,6 +64,15 @@ const LoadingSpinner = ({ message = "Loading..." }) => (
     <p className="mt-4 text-gray-600">{message}</p>
   </div>
 );
+
+// Helper: parse intervention amount string to number
+const parseAmount = (amountStr) => {
+  if (!amountStr || amountStr === "-") return 0;
+  // Remove currency symbols, commas, spaces, and other non-numeric characters except decimal point
+  const cleaned = amountStr.toString().replace(/[^0-9.-]/g, '');
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? 0 : num;
+};
 
 const MemoizedTableRow = React.memo(({
   item,
@@ -344,7 +354,20 @@ export default function FullCoopAssociations() {
   const fileInputRef = useRef(null);
   const debouncedSearchTerm = useDebounce(filters.searchTerm, 300);
 
+  // Total intervention amount (based on filtered data)
+  const totalInterventionAmount = useMemo(() => {
+    return filteredData.reduce((sum, item) => sum + parseAmount(item.interventionAmount), 0);
+  }, [filteredData]);
+
   const totalPages = useMemo(() => Math.ceil(filteredData.length / itemsPerPage), [filteredData.length, itemsPerPage]);
+
+  // Reset page and scroll to table when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+    if (tableRef.current) {
+      tableRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [filters, debouncedSearchTerm, sortConfig]);
 
   useEffect(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
@@ -427,7 +450,6 @@ export default function FullCoopAssociations() {
         });
       }
       setFilteredData(result);
-      setCurrentPage(1);
       setIsFiltering(false);
     });
   }, [filters, data, sortConfig, debouncedSearchTerm]);
@@ -1007,7 +1029,7 @@ export default function FullCoopAssociations() {
               <th colspan="6">No. of Members</th>
               <th rowspan="2">Commodity</th>
               <th colspan="6">Group Categories</th>
-              <th colspan="2">Intervention Reviewed</th>
+              <th colspan="2">Year</th>
               <th colspan="2">Status</th>
             </tr>
             <tr>
@@ -1146,7 +1168,7 @@ export default function FullCoopAssociations() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-green-800 to-green-600 bg-clip-text text-transparent mb-2">
-              Farmers Cooperative & Associations (FCAs)
+              Farmers' Cooperative And Associations (FCAs)
             </h1>
             <p className="text-gray-600">Complete list of all agricultural associations with advanced filtering</p>
           </div>
@@ -1166,7 +1188,7 @@ export default function FullCoopAssociations() {
 
       <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelUpload} className="hidden" />
 
-      {/* Action Bar */}
+      {/* Action Bar with Total Intervention Amount */}
       <div className="mb-6 bg-white p-5 rounded-2xl shadow-lg border border-gray-200">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex-1">
@@ -1176,7 +1198,17 @@ export default function FullCoopAssociations() {
             </h3>
             <p className="text-sm text-gray-600">Filter, search, import, and export your association data</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Total Intervention Amount Display */}
+            <div className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-xl px-4 py-2 border border-amber-200 flex items-center gap-2">
+              <FiDollarSign className="text-amber-600 text-lg" />
+              <div>
+                <span className="text-xs text-gray-600 block">Total Intervention Amount</span>
+                <span className="font-bold text-amber-800">
+                  {totalInterventionAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
             <button onClick={downloadSampleTemplate} className="px-4 py-2.5 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all duration-200 flex items-center shadow-sm hover:shadow">
               <FiFileText className="mr-2" /> Download Template
             </button>
@@ -1190,7 +1222,7 @@ export default function FullCoopAssociations() {
         </div>
       </div>
 
-      {/* Filter Section */}
+      {/* Filter Section (unchanged) */}
       <div className="bg-white p-5 md:p-6 rounded-2xl shadow-lg border border-gray-200 mb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-5">
           <div>
@@ -1306,7 +1338,7 @@ export default function FullCoopAssociations() {
                 <th colSpan="6" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">Members Breakdown</th>
                 <th rowSpan="2" className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 min-w-32">Commodity</th>
                 <th colSpan="6" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">Group Categories</th>
-                <th colSpan="2" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">Intervention Reviewed</th>
+                <th colSpan="2" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">Year</th>
                 <th colSpan="2" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
                 <th rowSpan="2" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider min-w-28">Actions</th>
               </tr>
@@ -1460,7 +1492,7 @@ export default function FullCoopAssociations() {
                 <label className="flex items-center space-x-2"><input type="checkbox" name="groupCategories.indigenousPeoplesAssociation" checked={newAssociation.groupCategories.indigenousPeoplesAssociation} onChange={handleInputChange} className="rounded text-indigo-600" /><span>Indigenous Peoples Association</span></label>
               </div></div>
               <div className="mb-8"><h4 className="text-lg font-bold text-gray-800 mb-6 pb-3 border-b border-gray-200">Intervention Information</h4><div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Intervention Reviewed</label><div className="flex items-center h-12"><label className="flex items-center"><input type="checkbox" name="interventionReviewed" checked={newAssociation.interventionReviewed} onChange={handleInputChange} className="h-5 w-5 text-indigo-600 rounded" /><span className="ml-2">Yes</span></label></div></div>
+                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Year</label><div className="flex items-center h-12"><label className="flex items-center"><input type="checkbox" name="interventionReviewed" checked={newAssociation.interventionReviewed} onChange={handleInputChange} className="h-5 w-5 text-indigo-600 rounded" /><span className="ml-2">Yes</span></label></div></div>
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Specific Intervention</label><input type="text" name="specificIntervention" value={newAssociation.specificIntervention} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl" placeholder="e.g., Seeds, Mech, Credit, Extn"/></div>
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Amount</label><input type="text" name="interventionAmount" value={newAssociation.interventionAmount} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl" placeholder="e.g., 100 bags, ₱50,000"/></div>
               </div></div>
@@ -1513,7 +1545,7 @@ export default function FullCoopAssociations() {
                 <label className="flex items-center space-x-2"><input type="checkbox" name="groupCategories.indigenousPeoplesAssociation" checked={newAssociation.groupCategories.indigenousPeoplesAssociation} onChange={handleInputChange} className="rounded text-indigo-600" /><span>Indigenous Peoples Association</span></label>
               </div></div>
               <div className="mb-8"><h4 className="text-lg font-bold text-gray-800 mb-6 pb-3 border-b border-gray-200">Intervention Information</h4><div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div><label>Intervention Reviewed</label><div className="flex items-center h-12"><label className="flex items-center"><input type="checkbox" name="interventionReviewed" checked={newAssociation.interventionReviewed} onChange={handleInputChange} className="h-5 w-5 text-indigo-600 rounded" /><span className="ml-2">Yes</span></label></div></div>
+                <div><label>Year</label><div className="flex items-center h-12"><label className="flex items-center"><input type="checkbox" name="interventionReviewed" checked={newAssociation.interventionReviewed} onChange={handleInputChange} className="h-5 w-5 text-indigo-600 rounded" /><span className="ml-2">Yes</span></label></div></div>
                 <div><label>Specific Intervention</label><input type="text" name="specificIntervention" value={newAssociation.specificIntervention} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl"/></div>
                 <div><label>Amount</label><input type="text" name="interventionAmount" value={newAssociation.interventionAmount} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl"/></div>
               </div></div>
@@ -1623,7 +1655,7 @@ export default function FullCoopAssociations() {
               <div className="mb-8">
                 <h4 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-200">Intervention Information</h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div><label className="text-sm text-gray-600">Intervention Reviewed:</label><p className="font-medium">{selectedViewAssociation.interventionReviewed ? "Yes" : "No"}</p></div>
+                  <div><label className="text-sm text-gray-600">Year:</label><p className="font-medium">{selectedViewAssociation.interventionReviewed ? "Yes" : "No"}</p></div>
                   <div><label className="text-sm text-gray-600">Specific Intervention:</label><p className="font-medium">{selectedViewAssociation.specificIntervention || "—"}</p></div>
                   <div><label className="text-sm text-gray-600">Amount:</label><p className="font-medium">{selectedViewAssociation.interventionAmount || "—"}</p></div>
                 </div>
