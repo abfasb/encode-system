@@ -84,7 +84,6 @@ const parseAmount = (amountStr) => {
 const parseTotalMembersFromString = (memberStr) => {
   if (!memberStr) return 0;
   const str = memberStr.toString();
-  // Try to extract total number
   const totalMatch = str.match(/(\d+[\d,]*)\s*(?:members?|total|:)/i);
   if (totalMatch) return parseInt(totalMatch[1].replace(/,/g, ''), 10);
   const justNumber = str.match(/^(\d+)/);
@@ -92,15 +91,19 @@ const parseTotalMembersFromString = (memberStr) => {
   return 0;
 };
 
-// ---------- Helper: Parse address to extract municipality ----------
-const parseMunicipalityFromAddress = (address) => {
-  if (!address) return '';
+// ---------- Helper: Parse address to extract municipality and province ----------
+const parseAddressToLocation = (address) => {
+  if (!address) return { municipality: '', province: '' };
   const parts = address.split(',').map(s => s.trim());
   if (parts.length >= 2) {
-    // Usually municipality is the second last part
-    return parts[parts.length - 2];
+    return {
+      municipality: parts[parts.length - 2],
+      province: parts[parts.length - 1]
+    };
+  } else if (parts.length === 1) {
+    return { municipality: '', province: parts[0] };
   }
-  return '';
+  return { municipality: '', province: '' };
 };
 
 // ---------- Helper: Check if a date string is expired ----------
@@ -132,7 +135,7 @@ const LoadingSpinner = ({ message = "Loading..." }) => (
   </div>
 );
 
-// Memoized Table Row Component (supports da‑encode, rcef, and cso records)
+// Memoized Table Row Component
 const MemoizedTableRow = React.memo(({
   item,
   index,
@@ -141,7 +144,7 @@ const MemoizedTableRow = React.memo(({
   openViewModal,
   isDifferentlyAbledEmpty,
   isRegistrationEmpty,
-  isReadOnly  // true for RCEF and CSO records
+  isReadOnly
 }) => {
   const handleEditClick = useCallback((e) => {
     e.stopPropagation();
@@ -168,7 +171,6 @@ const MemoizedTableRow = React.memo(({
 
   const renderCheck = (value) => value ? "✓" : "";
 
-  // Display accreditation periods if present
   const renderAccreditationPeriods = () => {
     if (item.accreditationPeriods && item.accreditationPeriods.length > 0) {
       return (
@@ -369,7 +371,7 @@ const Pagination = ({ currentPage, totalPages, itemsPerPage, totalItems, onPageC
 
 // Main Component
 export default function FullCoopAssociations() {
-  const [data, setData] = useState([]);               // grouped data (combined and deduplicated)
+  const [data, setData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -440,14 +442,12 @@ export default function FullCoopAssociations() {
   const fileInputRef = useRef(null);
   const debouncedSearchTerm = useDebounce(filters.searchTerm, 300);
 
-  // Total intervention amount (based on filtered data)
   const totalInterventionAmount = useMemo(() => {
     return filteredData.reduce((sum, item) => sum + parseAmount(item.interventionAmount), 0);
   }, [filteredData]);
 
   const totalPages = useMemo(() => Math.ceil(filteredData.length / itemsPerPage), [filteredData.length, itemsPerPage]);
 
-  // Reset page and scroll to table when filters change
   useEffect(() => {
     setCurrentPage(1);
     if (tableRef.current) {
@@ -466,12 +466,11 @@ export default function FullCoopAssociations() {
   const uniqueCommodities = useMemo(() => [...new Set(data.map(item => item.commodity).filter(Boolean))].sort(), [data]);
 
   // ---------------------------
-  // DATA FETCHING & GROUPING (including CSO)
+  // DATA FETCHING & DEDUPLICATION (by name only)
   // ---------------------------
   const fetchData = async () => {
     try {
       setLoading(true);
-      // Fetch from all three collections
       const daSnapshot = await getDocs(collection(db, "da-encode"));
       const rcefSnapshot = await getDocs(collection(db, "rcef"));
       const csoSnapshot = await getDocs(collection(db, "cso"));
@@ -578,41 +577,31 @@ export default function FullCoopAssociations() {
         });
       });
 
-      // Process cso records (CSO Accredited)
+      // Process cso records
       csoSnapshot.forEach(doc => {
         const record = doc.data();
-        // Extract municipality from address if not directly available
-        let municipality = record.municipality || parseMunicipalityFromAddress(record.address);
-        let province = record.province || "";
-        // If province is empty, try to extract from address
-        if (!province && record.address) {
-          const parts = record.address.split(',').map(s => s.trim());
-          if (parts.length >= 1) {
-            province = parts[parts.length - 1];
-          }
-        }
-        // Parse members from no_of_members string
+        const { municipality, province } = parseAddressToLocation(record.address || '');
+        const finalProvince = record.province || province;
+        const finalMunicipality = record.municipality || municipality;
         const totalMembers = parseTotalMembersFromString(record.no_of_members);
-        // For CSO, we only have total, so we put total in male field as a fallback (but we'll handle aggregation)
-        // We'll store the parsed total in a separate field for aggregation
         allRecords.push({
           id: doc.id,
           source: "cso",
-          province: province,
-          municipality: municipality,
+          province: finalProvince,
+          municipality: finalMunicipality,
           name: record.name_of_association || "",
           address: record.address || "",
           registration_type: "CSO Accredited",
           president: record.contact_person || "",
           contact_number: record.contact_number || "",
           members: {
-            male: "",   // We'll aggregate total separately
+            male: "",
             female: "",
             senior_citizen: "",
             differently_abled: "",
             young_farmer: "",
             ips: "",
-            cso_total_members: totalMembers  // store for aggregation
+            cso_total_members: totalMembers
           },
           commodity: "",
           status: record.status === "Active" ? "Active" : "Inactive",
@@ -635,96 +624,121 @@ export default function FullCoopAssociations() {
         });
       });
 
-      // Group by normalized name + province + municipality
-      const groups = new Map();
+      // ---------- DEDUPLICATION: Group by normalized name only ----------
+      const nameGroups = new Map(); // key: normalized name, value: array of records
+
       allRecords.forEach(record => {
         const normalizedName = normalizeString(record.name);
-        const normalizedProv = normalizeProvince(record.province);
-        const normalizedMun = normalizeString(record.municipality);
-        const key = `${normalizedName}|${normalizedProv}|${normalizedMun}`;
-        if (!groups.has(key)) {
-          groups.set(key, {
-            id: key,
-            name: normalizedName,
-            province: normalizedProv,
-            municipality: normalizedMun,
-            address: record.address,
-            registration_type: record.registration_type,
-            president: record.president,
-            contact_number: record.contact_number,
-            members: { male: 0, female: 0, senior_citizen: 0, differently_abled: 0, young_farmer: 0, ips: 0, cso_total_members: 0 },
-            totalMembers: 0,
-            commodity: record.commodity,
-            status: "Active",
-            groupCategories: { womenLed: false, menLed: false, seniorCitizensGroup: false, personsWithDisabilitiesGroup: false, youngFarmersOrganization: false, indigenousPeoplesAssociation: false },
-            interventionReviewed: false,
-            specificIntervention: "",
-            interventionAmount: "",
-            accreditationPeriods: [],
-            interventions: { seeds: false, mech: false, credit: false, extn: false },
-            sourceRecords: [],
-            source: record.source  // primary source (first encountered)
-          });
+        if (!normalizedName) return; // skip nameless
+        if (!nameGroups.has(normalizedName)) {
+          nameGroups.set(normalizedName, []);
         }
-        const group = groups.get(key);
-        // Aggregate numeric members
-        group.members.male += parseInt(record.members?.male) || 0;
-        group.members.female += parseInt(record.members?.female) || 0;
-        group.members.senior_citizen += parseInt(record.members?.senior_citizen) || 0;
-        group.members.differently_abled += parseInt(record.members?.differently_abled) || 0;
-        group.members.young_farmer += parseInt(record.members?.young_farmer) || 0;
-        group.members.ips += parseInt(record.members?.ips) || 0;
-        // For CSO, add total members from cso_total_members to male as fallback? Actually we add to totalMembers directly
-        if (record.members?.cso_total_members) {
-          group.members.cso_total_members += record.members.cso_total_members;
-        }
-        // Compute total members: sum of all categories plus cso_total_members
-        group.totalMembers = group.members.male + group.members.female + group.members.senior_citizen + group.members.differently_abled + group.members.young_farmer + group.members.ips + group.members.cso_total_members;
-        // Merge groupCategories (OR)
-        if (record.groupCategories) {
-          group.groupCategories.womenLed = group.groupCategories.womenLed || record.groupCategories.womenLed;
-          group.groupCategories.menLed = group.groupCategories.menLed || record.groupCategories.menLed;
-          group.groupCategories.seniorCitizensGroup = group.groupCategories.seniorCitizensGroup || record.groupCategories.seniorCitizensGroup;
-          group.groupCategories.personsWithDisabilitiesGroup = group.groupCategories.personsWithDisabilitiesGroup || record.groupCategories.personsWithDisabilitiesGroup;
-          group.groupCategories.youngFarmersOrganization = group.groupCategories.youngFarmersOrganization || record.groupCategories.youngFarmersOrganization;
-          group.groupCategories.indigenousPeoplesAssociation = group.groupCategories.indigenousPeoplesAssociation || record.groupCategories.indigenousPeoplesAssociation;
-        }
-        // Merge interventions (OR)
-        if (record.interventions) {
-          group.interventions.seeds = group.interventions.seeds || record.interventions.seeds;
-          group.interventions.mech = group.interventions.mech || record.interventions.mech;
-          group.interventions.credit = group.interventions.credit || record.interventions.credit;
-          group.interventions.extn = group.interventions.extn || record.interventions.extn;
-        }
-        // Collect accreditation periods
-        if (record.accreditationPeriods && record.accreditationPeriods.length > 0) {
-          group.accreditationPeriods.push(...record.accreditationPeriods);
-        }
-        // Store original record reference
-        group.sourceRecords.push(record);
-        // Keep track of source priority (da-encode > rcef > cso) but not needed for display
+        nameGroups.get(normalizedName).push(record);
       });
 
-      // Convert map to array and sort by name
-      const groupedArray = Array.from(groups.values()).map(group => ({
-        ...group,
-        specificIntervention: group.interventions ? 
-          Object.entries(group.interventions).filter(([k,v]) => v).map(([k]) => k).join(', ') : "",
-        interventionAmount: "",
-        status: group.sourceRecords.some(r => r.status === "Active") ? "Active" : "Inactive",
-        // Take first non-empty values for certain fields
-        address: group.address || group.sourceRecords.find(r => r.address)?.address || "",
-        registration_type: group.registration_type || group.sourceRecords.find(r => r.registration_type)?.registration_type || "",
-        president: group.president || group.sourceRecords.find(r => r.president)?.president || "",
-        contact_number: group.contact_number || group.sourceRecords.find(r => r.contact_number)?.contact_number || "",
-        commodity: group.commodity || group.sourceRecords.find(r => r.commodity)?.commodity || "",
-      }));
+      const mergedGroups = [];
 
-      groupedArray.sort((a, b) => a.name.localeCompare(b.name));
+      for (const [normalizedName, records] of nameGroups.entries()) {
+        // Determine best province and municipality (most frequent non-empty)
+        const provinceCounts = new Map();
+        const municipalityCounts = new Map();
+        let bestProvince = '';
+        let bestMunicipality = '';
 
-      setData(groupedArray);
-      setFilteredData(groupedArray);
+        records.forEach(rec => {
+          if (rec.province) {
+            const normProv = normalizeProvince(rec.province);
+            provinceCounts.set(normProv, (provinceCounts.get(normProv) || 0) + 1);
+          }
+          if (rec.municipality) {
+            const normMun = normalizeString(rec.municipality);
+            municipalityCounts.set(normMun, (municipalityCounts.get(normMun) || 0) + 1);
+          }
+        });
+
+        if (provinceCounts.size > 0) {
+          bestProvince = [...provinceCounts.entries()].reduce((a, b) => a[1] > b[1] ? a : b)[0];
+        }
+        if (municipalityCounts.size > 0) {
+          bestMunicipality = [...municipalityCounts.entries()].reduce((a, b) => a[1] > b[1] ? a : b)[0];
+        }
+
+        // Merge all records under this name
+        const merged = {
+          id: normalizedName,
+          name: normalizedName,
+          province: bestProvince,
+          municipality: bestMunicipality,
+          address: '',
+          registration_type: '',
+          president: '',
+          contact_number: '',
+          members: { male: 0, female: 0, senior_citizen: 0, differently_abled: 0, young_farmer: 0, ips: 0, cso_total_members: 0 },
+          totalMembers: 0,
+          commodity: '',
+          status: 'Active',
+          groupCategories: { womenLed: false, menLed: false, seniorCitizensGroup: false, personsWithDisabilitiesGroup: false, youngFarmersOrganization: false, indigenousPeoplesAssociation: false },
+          interventionReviewed: false,
+          specificIntervention: '',
+          interventionAmount: '',
+          accreditationPeriods: [],
+          interventions: { seeds: false, mech: false, credit: false, extn: false },
+          sourceRecords: records,
+          source: records[0].source // primary source for display
+        };
+
+        // Aggregate members and categories
+        records.forEach(rec => {
+          merged.members.male += parseInt(rec.members?.male) || 0;
+          merged.members.female += parseInt(rec.members?.female) || 0;
+          merged.members.senior_citizen += parseInt(rec.members?.senior_citizen) || 0;
+          merged.members.differently_abled += parseInt(rec.members?.differently_abled) || 0;
+          merged.members.young_farmer += parseInt(rec.members?.young_farmer) || 0;
+          merged.members.ips += parseInt(rec.members?.ips) || 0;
+          if (rec.members?.cso_total_members) {
+            merged.members.cso_total_members += rec.members.cso_total_members;
+          }
+
+          if (rec.groupCategories) {
+            merged.groupCategories.womenLed = merged.groupCategories.womenLed || rec.groupCategories.womenLed;
+            merged.groupCategories.menLed = merged.groupCategories.menLed || rec.groupCategories.menLed;
+            merged.groupCategories.seniorCitizensGroup = merged.groupCategories.seniorCitizensGroup || rec.groupCategories.seniorCitizensGroup;
+            merged.groupCategories.personsWithDisabilitiesGroup = merged.groupCategories.personsWithDisabilitiesGroup || rec.groupCategories.personsWithDisabilitiesGroup;
+            merged.groupCategories.youngFarmersOrganization = merged.groupCategories.youngFarmersOrganization || rec.groupCategories.youngFarmersOrganization;
+            merged.groupCategories.indigenousPeoplesAssociation = merged.groupCategories.indigenousPeoplesAssociation || rec.groupCategories.indigenousPeoplesAssociation;
+          }
+
+          if (rec.interventions) {
+            merged.interventions.seeds = merged.interventions.seeds || rec.interventions.seeds;
+            merged.interventions.mech = merged.interventions.mech || rec.interventions.mech;
+            merged.interventions.credit = merged.interventions.credit || rec.interventions.credit;
+            merged.interventions.extn = merged.interventions.extn || rec.interventions.extn;
+          }
+
+          if (rec.accreditationPeriods && rec.accreditationPeriods.length) {
+            merged.accreditationPeriods.push(...rec.accreditationPeriods);
+          }
+
+          // Take first non-empty for text fields
+          if (!merged.address && rec.address) merged.address = rec.address;
+          if (!merged.registration_type && rec.registration_type) merged.registration_type = rec.registration_type;
+          if (!merged.president && rec.president) merged.president = rec.president;
+          if (!merged.contact_number && rec.contact_number) merged.contact_number = rec.contact_number;
+          if (!merged.commodity && rec.commodity) merged.commodity = rec.commodity;
+        });
+
+        merged.totalMembers = merged.members.male + merged.members.female + merged.members.senior_citizen + merged.members.differently_abled + merged.members.young_farmer + merged.members.ips + merged.members.cso_total_members;
+        merged.specificIntervention = Object.entries(merged.interventions).filter(([k,v]) => v).map(([k]) => k).join(', ');
+        merged.status = records.some(r => r.status === "Active") ? "Active" : "Inactive";
+
+        mergedGroups.push(merged);
+      }
+
+      mergedGroups.sort((a, b) => a.name.localeCompare(b.name));
+      setData(mergedGroups);
+      setFilteredData(mergedGroups);
       setCurrentPage(1);
+
       // Build provincesData for municipality dropdown (from da-encode only, for editing)
       const provincesList = [];
       for (const doc of daSnapshot.docs) {
@@ -844,7 +858,6 @@ export default function FullCoopAssociations() {
     return sortConfig.direction === 'ascending' ? <FiChevronUp className="text-green-600" /> : <FiChevronDown className="text-green-600" />;
   };
 
-  // For editing/deleting, we need the original da-encode record details
   const getOriginalDaEncodeRecord = (groupedItem) => {
     return groupedItem.sourceRecords?.find(r => r.source === "da-encode");
   };
@@ -1110,7 +1123,7 @@ export default function FullCoopAssociations() {
     }
   };
 
-  // ---------- Import / Export functions (unchanged) ----------
+  // ---------- Import / Export functions ----------
   const handleExcelUpload = (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -1888,8 +1901,12 @@ export default function FullCoopAssociations() {
             <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-red-50 to-pink-50"><h3 className="text-2xl font-bold text-gray-900">Confirm Deletion</h3></div>
             <div className="p-8"><div className="flex flex-col items-center justify-center mb-6"><div className="w-16 h-16 bg-gradient-to-br from-red-100 to-pink-100 rounded-full flex items-center justify-center mb-4"><FiTrash2 className="w-8 h-8 text-red-600" /></div><p className="text-center text-lg font-medium text-gray-800 mb-2">Are you sure you want to delete this association?</p><p className="text-center text-gray-600 mb-6">This action cannot be undone.</p><div className="bg-red-50 border border-red-200 rounded-2xl p-5 w-full mb-6"><p className="font-bold text-lg text-red-800 mb-1">{selectedAssociation.name}</p><div className="flex flex-col space-y-1 text-sm text-red-600"><p><span className="font-medium">Province:</span> {selectedAssociation.province}</p><p><span className="font-medium">Municipality:</span> {selectedAssociation.municipality}</p><p><span className="font-medium">President:</span> {selectedAssociation.president}</p><p><span className="font-medium">Total Members:</span> {selectedAssociation.totalMembers}</p></div></div><div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 w-full"><p className="text-sm text-yellow-800"><span className="font-bold">⚠️ Warning:</span> All data including member information will be permanently deleted from the system.</p></div></div></div>
             <div className="px-8 py-6 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white flex justify-end space-x-4">
-              <button onClick={()=>setIsDeleteModalOpen(false)} className="px-6 py-3 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-              <button onClick={handleDeleteAssociation} className="px-8 py-3 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-xl font-semibold hover:from-red-700 hover:to-pink-700 shadow-lg">Delete Association</button>
+                           <button onClick={() => setIsDeleteModalOpen(false)} className="px-6 py-3 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50">
+                Cancel
+              </button>
+              <button onClick={handleDeleteAssociation} className="px-8 py-3 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-xl font-semibold hover:from-red-700 hover:to-pink-700 shadow-lg">
+                Delete Association
+              </button>
             </div>
           </div>
         </div>
