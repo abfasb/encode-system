@@ -1,15 +1,14 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   collection,
   getDocs,
+  getDoc,
   addDoc,
   updateDoc,
   deleteDoc,
   doc,
-  query,
-  arrayUnion,
-  arrayRemove,
-  serverTimestamp
+  serverTimestamp,
+  Timestamp
 } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import * as XLSXStyle from 'xlsx-js-style';
@@ -32,11 +31,7 @@ import {
   FileText,
   MapPin,
   User,
-  Building,
-  Shield,
-  ExternalLink,
   RefreshCw,
-  Clock,
   ThumbsDown,
   Save
 } from 'lucide-react';
@@ -54,7 +49,17 @@ const formatDate = (dateString) => {
   });
 };
 
-// ---------- DataTable Component (unchanged, premium) ----------
+// Helper: Convert Firestore Timestamp to YYYY-MM-DD string for input
+const timestampToDateString = (timestamp) => {
+  if (!timestamp) return '';
+  if (timestamp instanceof Timestamp) {
+    return timestamp.toDate().toISOString().split('T')[0];
+  }
+  if (typeof timestamp === 'string') return timestamp;
+  return '';
+};
+
+// ---------- DataTable Component ----------
 const DataTable = ({
   columns,
   data,
@@ -134,10 +139,7 @@ const DataTable = ({
                   onClick={(e) => handleRowClick(row, e)}
                 >
                   {columns.map((column) => (
-                    <td
-                      key={column.key}
-                      className="px-6 py-4 whitespace-nowrap text-sm"
-                    >
+                    <td key={column.key} className="px-6 py-4 whitespace-nowrap text-sm">
                       {column.render ? column.render(row) : row[column.key]}
                     </td>
                   ))}
@@ -154,12 +156,10 @@ const DataTable = ({
             <select
               value={pagination.rowsPerPage}
               onChange={(e) => onRowsPerPageChange(Number(e.target.value))}
-              className="rounded-lg border border-gray-300 text-gray-700 bg-white px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              className="rounded-lg border border-gray-300 text-gray-700 bg-white px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
             >
               {[5, 10, 25, 50, 100].map((size) => (
-                <option key={size} value={size}>
-                  {size} per page
-                </option>
+                <option key={size} value={size}>{size} per page</option>
               ))}
             </select>
             <span className="text-sm text-gray-700">
@@ -197,7 +197,6 @@ const DataTable = ({
                 } else {
                   pageNum = pagination.currentPage - 2 + i;
                 }
-
                 return (
                   <button
                     key={pageNum}
@@ -235,7 +234,7 @@ const DataTable = ({
   );
 };
 
-// ---------- Premium Modal Component ----------
+// ---------- Modal Component ----------
 const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   if (!isOpen) return null;
 
@@ -278,11 +277,227 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   );
 };
 
+// ---------- Disapproved Form Component (manages its own state to prevent focus loss) ----------
+const DisapprovedForm = ({ initialData, onSave, onCancel, isSaving, isEdit }) => {
+  const [formData, setFormData] = useState(() => ({
+    no: initialData?.no || '',
+    name_of_association: initialData?.name_of_association || '',
+    contact_person: initialData?.contact_person || '',
+    position: initialData?.position || '',
+    contact_number: initialData?.contact_number || '',
+    email_address: initialData?.email_address || '',
+    no_of_members: initialData?.no_of_members || '',
+    address: initialData?.address || '',
+    province: initialData?.province || '',
+    scope: initialData?.scope || 'Regional',
+    nature_of_services: initialData?.nature_of_services || '',
+    reason_for_disapproval: initialData?.reason_for_disapproval || '',
+    date_of_receipt: initialData?.date_of_receipt || '',
+    remarks: initialData?.remarks || '',
+    for_deliberation: initialData?.for_deliberation || false,
+    documentary_requirements: initialData?.documentary_requirements || {},
+    process: initialData?.process || {}
+  }));
+
+  const handleChange = (field) => (e) => {
+    setFormData(prev => ({ ...prev, [field]: e.target.value }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSave(formData);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Left Column */}
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label htmlFor="form_no" className="block text-sm font-medium text-gray-700">No.</label>
+            <input
+              id="form_no"
+              type="number"
+              value={formData.no}
+              onChange={handleChange('no')}
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="form_name" className="block text-sm font-medium text-gray-700">Name of Association <span className="text-red-500">*</span></label>
+            <input
+              id="form_name"
+              type="text"
+              value={formData.name_of_association}
+              onChange={handleChange('name_of_association')}
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black"
+              required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="form_contact_person" className="block text-sm font-medium text-gray-700">Contact Person</label>
+            <input
+              id="form_contact_person"
+              type="text"
+              value={formData.contact_person}
+              onChange={handleChange('contact_person')}
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="form_position" className="block text-sm font-medium text-gray-700">Position</label>
+            <input
+              id="form_position"
+              type="text"
+              value={formData.position}
+              onChange={handleChange('position')}
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="form_contact_number" className="block text-sm font-medium text-gray-700">Contact Number</label>
+            <input
+              id="form_contact_number"
+              type="text"
+              value={formData.contact_number}
+              onChange={handleChange('contact_number')}
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="form_email" className="block text-sm font-medium text-gray-700">Email Address</label>
+            <input
+              id="form_email"
+              type="email"
+              value={formData.email_address}
+              onChange={handleChange('email_address')}
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="form_members" className="block text-sm font-medium text-gray-700">Number of Members</label>
+            <input
+              id="form_members"
+              type="text"
+              value={formData.no_of_members}
+              onChange={handleChange('no_of_members')}
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black"
+            />
+          </div>
+        </div>
+
+        {/* Right Column */}
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label htmlFor="form_address" className="block text-sm font-medium text-gray-700">Address</label>
+            <input
+              id="form_address"
+              type="text"
+              value={formData.address}
+              onChange={handleChange('address')}
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="form_province" className="block text-sm font-medium text-gray-700">Province <span className="text-red-500">*</span></label>
+            <input
+              id="form_province"
+              type="text"
+              value={formData.province}
+              onChange={handleChange('province')}
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black"
+              required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="form_scope" className="block text-sm font-medium text-gray-700">Scope</label>
+            <select
+              id="form_scope"
+              value={formData.scope}
+              onChange={handleChange('scope')}
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black"
+            >
+              <option value="Regional">Regional</option>
+              <option value="National">National</option>
+              <option value="Local">Local</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="form_services" className="block text-sm font-medium text-gray-700">Nature of Services</label>
+            <textarea
+              id="form_services"
+              rows={2}
+              value={formData.nature_of_services}
+              onChange={handleChange('nature_of_services')}
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="form_reason" className="block text-sm font-medium text-gray-700">Reason for Disapproval</label>
+            <textarea
+              id="form_reason"
+              rows={3}
+              value={formData.reason_for_disapproval}
+              onChange={handleChange('reason_for_disapproval')}
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="form_date" className="block text-sm font-medium text-gray-700">Date of Receipt</label>
+            <input
+              id="form_date"
+              type="date"
+              value={formData.date_of_receipt}
+              onChange={handleChange('date_of_receipt')}
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="form_remarks" className="block text-sm font-medium text-gray-700">Remarks</label>
+            <input
+              id="form_remarks"
+              type="text"
+              value={formData.remarks}
+              onChange={handleChange('remarks')}
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={isSaving}
+          className="px-6 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 text-white font-medium rounded-xl hover:from-amber-700 hover:to-orange-700 transition disabled:opacity-50 flex items-center"
+        >
+          {isSaving ? (
+            <>
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4 mr-2" />
+              {isEdit ? 'Update Record' : 'Add Record'}
+            </>
+          )}
+        </button>
+      </div>
+    </form>
+  );
+};
+
 // ---------- Main Component ----------
 const CsoDisapproved = () => {
-  // Flat array of disapproved records (each = one association)
   const [disapprovedData, setDisapprovedData] = useState([]);
-  // Keep original province documents for updates
   const [provinceDocs, setProvinceDocs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -293,75 +508,53 @@ const CsoDisapproved = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
-
-  // Form state (flat, matches basic_information + other fields)
-  const [formData, setFormData] = useState({
-    no: '',
-    name_of_association: '',
-    contact_person: '',
-    position: '',
-    contact_number: '',
-    email_address: '',
-    no_of_members: '',
-    address: '',
-    province: '',
-    scope: 'Regional',
-    nature_of_services: '',
-    reason_for_disapproval: '',
-    date_of_receipt: '',
-    remarks: '',
-    for_deliberation: false,
-    documentary_requirements: {},
-    process: {}
-  });
-
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filters, setFilters] = useState({
-    scope: 'all',
-    province: 'all'
-  });
-  const [sortConfig, setSortConfig] = useState({
-    field: 'no',
-    direction: 'asc'
-  });
-  const [pagination, setPagination] = useState({
-    currentPage: 1,
-    rowsPerPage: 10,
-    totalPages: 1
-  });
-  const [stats, setStats] = useState({
-    total: 0,
-    byProvince: {},
-    topReason: ''
-  });
+  const [filters, setFilters] = useState({ scope: 'all', province: 'all' });
+  const [sortConfig, setSortConfig] = useState({ field: 'no', direction: 'asc' });
+  const [pagination, setPagination] = useState({ currentPage: 1, rowsPerPage: 10, totalPages: 1 });
+  const [stats, setStats] = useState({ total: 0, byProvince: {}, topReason: '' });
 
-  // ---------- Fetch and FLATTEN disapproved records ----------
+  // Helper: Build clean association object from formData
+  const buildAssociationObject = useCallback((formData) => ({
+    no: formData.no ? String(formData.no) : '',
+    basic_information: {
+      name_of_association: formData.name_of_association || '',
+      contact_person: formData.contact_person || '',
+      position: formData.position || '',
+      contact_number: formData.contact_number || '',
+      email_address: formData.email_address || '',
+      no_of_members: formData.no_of_members || '',
+      address: formData.address || ''
+    },
+    nature_of_services: formData.nature_of_services || '',
+    reason_for_disapproval: formData.reason_for_disapproval || '',
+    scope: formData.scope || 'Regional',
+    date_of_receipt: formData.date_of_receipt || '',
+    remarks: formData.remarks || '',
+    for_deliberation: formData.for_deliberation || false,
+    documentary_requirements: formData.documentary_requirements || {},
+    process: formData.process || {}
+  }), []);
+
+  // Fetch disapproved records
   const fetchDisapprovedData = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
-
       const disapprovedCollection = collection(db, 'cso-disapproved');
       const querySnapshot = await getDocs(disapprovedCollection);
-
       const provinceDocsArray = [];
       const flattened = [];
 
       querySnapshot.forEach((docSnap) => {
         const docData = docSnap.data();
-        const provinceDoc = { id: docSnap.id, ...docData };
-        provinceDocsArray.push(provinceDoc);
-
-        // Check if this document has the nested structure (associations array)
+        provinceDocsArray.push({ id: docSnap.id, ...docData });
         if (docData.associations && Array.isArray(docData.associations)) {
-          // It's a province-grouped document
           const provinceName = docData.province || 'Unknown';
           docData.associations.forEach((assoc, index) => {
-            // Flatten: merge basic_information and other fields
             const basic = assoc.basic_information || {};
             flattened.push({
-              // Unique ID for this flattened record
               flattenedId: `${docSnap.id}_${index}`,
               provinceDocId: docSnap.id,
               associationIndex: index,
@@ -377,7 +570,7 @@ const CsoDisapproved = () => {
               scope: assoc.scope,
               nature_of_services: assoc.nature_of_services,
               reason_for_disapproval: assoc.reason_for_disapproval,
-              date_of_receipt: assoc.date_of_receipt,
+              date_of_receipt: timestampToDateString(assoc.date_of_receipt),
               remarks: assoc.remarks,
               for_deliberation: assoc.for_deliberation,
               documentary_requirements: assoc.documentary_requirements,
@@ -385,30 +578,23 @@ const CsoDisapproved = () => {
             });
           });
         } else {
-          // Flat document (one CSO per doc) – treat as is
           flattened.push({
             flattenedId: docSnap.id,
             provinceDocId: docSnap.id,
             associationIndex: null,
-            ...docData
+            ...docData,
+            date_of_receipt: timestampToDateString(docData.date_of_receipt)
           });
         }
       });
 
-      // Sort by no. ascending
       flattened.sort((a, b) => (parseInt(a.no) || 0) - (parseInt(b.no) || 0));
-
       setDisapprovedData(flattened);
       setProvinceDocs(provinceDocsArray);
 
-      // Stats
       const total = flattened.length;
       const byProvince = {};
-      flattened.forEach(item => {
-        const province = item.province || 'Unknown';
-        byProvince[province] = (byProvince[province] || 0) + 1;
-      });
-
+      flattened.forEach(item => { byProvince[item.province || 'Unknown'] = (byProvince[item.province || 'Unknown'] || 0) + 1; });
       const reasonCounts = {};
       flattened.forEach(item => {
         if (item.reason_for_disapproval) {
@@ -417,7 +603,6 @@ const CsoDisapproved = () => {
         }
       });
       const topReason = Object.entries(reasonCounts).sort((a,b) => b[1] - a[1])[0]?.[0] || 'N/A';
-
       setStats({ total, byProvince, topReason });
     } catch (err) {
       console.error('Error fetching disapproved CSO data:', err);
@@ -427,120 +612,28 @@ const CsoDisapproved = () => {
     }
   }, []);
 
-  useEffect(() => {
-    fetchDisapprovedData();
-  }, [fetchDisapprovedData]);
+  useEffect(() => { fetchDisapprovedData(); }, [fetchDisapprovedData]);
 
-  // ---------- Reset form ----------
-  const resetForm = () => {
-    setFormData({
-      no: '',
-      name_of_association: '',
-      contact_person: '',
-      position: '',
-      contact_number: '',
-      email_address: '',
-      no_of_members: '',
-      address: '',
-      province: '',
-      scope: 'Regional',
-      nature_of_services: '',
-      reason_for_disapproval: '',
-      date_of_receipt: '',
-      remarks: '',
-      for_deliberation: false,
-      documentary_requirements: {},
-      process: {}
-    });
-  };
-
-  // ---------- Open Add Modal ----------
-  const openAddModal = () => {
-    resetForm();
-    setShowAddModal(true);
-  };
-
-  // ---------- Open Edit Modal ----------
-  const openEditModal = (record) => {
-    setSelectedRecord(record);
-    setFormData({
-      no: record.no || '',
-      name_of_association: record.name_of_association || '',
-      contact_person: record.contact_person || '',
-      position: record.position || '',
-      contact_number: record.contact_number || '',
-      email_address: record.email_address || '',
-      no_of_members: record.no_of_members || '',
-      address: record.address || '',
-      province: record.province || '',
-      scope: record.scope || 'Regional',
-      nature_of_services: record.nature_of_services || '',
-      reason_for_disapproval: record.reason_for_disapproval || '',
-      date_of_receipt: record.date_of_receipt || '',
-      remarks: record.remarks || '',
-      for_deliberation: record.for_deliberation || false,
-      documentary_requirements: record.documentary_requirements || {},
-      process: record.process || {}
-    });
-    setShowEditModal(true);
-  };
-
-  // ---------- Helper: Build association object from formData ----------
-  const buildAssociationObject = () => ({
-    no: formData.no,
-    basic_information: {
-      name_of_association: formData.name_of_association,
-      contact_person: formData.contact_person,
-      position: formData.position,
-      contact_number: formData.contact_number,
-      email_address: formData.email_address,
-      no_of_members: formData.no_of_members,
-      address: formData.address
-    },
-    nature_of_services: formData.nature_of_services,
-    reason_for_disapproval: formData.reason_for_disapproval,
-    scope: formData.scope,
-    date_of_receipt: formData.date_of_receipt,
-    remarks: formData.remarks,
-    for_deliberation: formData.for_deliberation,
-    documentary_requirements: formData.documentary_requirements,
-    process: formData.process
-  });
-
-  // ---------- Handle Add (nested) ----------
-  const handleAddRecord = async () => {
+  // Handle Add
+  const handleAddRecord = async (formData) => {
     try {
       setSaving(true);
       setError('');
-
       const province = formData.province;
       if (!province) throw new Error('Province is required');
-
-      // Find existing province document or create new one
+      const newAssociation = buildAssociationObject(formData);
       const existingProvinceDoc = provinceDocs.find(doc => doc.province === province);
-      const newAssociation = buildAssociationObject();
-
       if (existingProvinceDoc) {
-        // Update existing province doc: push new association to array
         const provinceDocRef = doc(db, 'cso-disapproved', existingProvinceDoc.id);
-        await updateDoc(provinceDocRef, {
-          associations: arrayUnion(newAssociation),
-          updatedAt: serverTimestamp()
-        });
+        const docSnap = await getDoc(provinceDocRef);
+        const currentAssociations = docSnap.exists() ? (docSnap.data().associations || []) : [];
+        await updateDoc(provinceDocRef, { associations: [...currentAssociations, newAssociation], updatedAt: serverTimestamp() });
       } else {
-        // Create new province document
-        await addDoc(collection(db, 'cso-disapproved'), {
-          province,
-          associations: [newAssociation],
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
+        await addDoc(collection(db, 'cso-disapproved'), { province, associations: [newAssociation], createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
       }
-
       setSuccess('Disapproved record added successfully!');
       setShowAddModal(false);
-      resetForm();
-      fetchDisapprovedData();
+      await fetchDisapprovedData();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error('Error adding disapproved record:', err);
@@ -550,38 +643,32 @@ const CsoDisapproved = () => {
     }
   };
 
-  // ---------- Handle Update (nested) ----------
-  const handleUpdateRecord = async () => {
+  // Handle Update
+  const handleUpdateRecord = async (formData) => {
     if (!selectedRecord) return;
     try {
       setSaving(true);
       setError('');
-
       const { provinceDocId, associationIndex } = selectedRecord;
+      const updatedAssociation = buildAssociationObject(formData);
       if (!provinceDocId || associationIndex === null) {
-        // Flat document – update directly
-        await updateDoc(doc(db, 'cso-disapproved', selectedRecord.provinceDocId), formData);
+        const cleanData = { ...updatedAssociation };
+        delete cleanData.province;
+        await updateDoc(doc(db, 'cso-disapproved', provinceDocId), cleanData);
       } else {
-        // Nested: get current province doc, update the specific association
         const provinceDocRef = doc(db, 'cso-disapproved', provinceDocId);
-        const provinceSnap = await getDocs(provinceDocRef); // actually need getDoc
-        // Using getDoc is better – but we'll use the already fetched data from state
-        const currentAssociations = [...(provinceDocs.find(d => d.id === provinceDocId)?.associations || [])];
-        if (currentAssociations[associationIndex]) {
-          currentAssociations[associationIndex] = buildAssociationObject();
-          await updateDoc(provinceDocRef, {
-            associations: currentAssociations,
-            updatedAt: serverTimestamp()
-          });
-        } else {
-          throw new Error('Association not found');
-        }
+        const docSnap = await getDoc(provinceDocRef);
+        if (!docSnap.exists()) throw new Error('Province document not found');
+        const currentAssociations = docSnap.data().associations || [];
+        if (!currentAssociations[associationIndex]) throw new Error('Association not found');
+        const updatedAssociations = [...currentAssociations];
+        updatedAssociations[associationIndex] = updatedAssociation;
+        await updateDoc(provinceDocRef, { associations: updatedAssociations, updatedAt: serverTimestamp() });
       }
-
       setSuccess('Disapproved record updated successfully!');
       setShowEditModal(false);
-      resetForm();
-      fetchDisapprovedData();
+      setSelectedRecord(null);
+      await fetchDisapprovedData();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error('Error updating disapproved record:', err);
@@ -591,46 +678,42 @@ const CsoDisapproved = () => {
     }
   };
 
-  // ---------- Handle Delete (nested) ----------
+  // Handle Delete
   const handlePermanentDelete = async () => {
     if (!selectedRecord) return;
     try {
-      const { provinceDocId, associationIndex, flattenedId } = selectedRecord;
-
+      setSaving(true);
+      const { provinceDocId, associationIndex } = selectedRecord;
       if (!provinceDocId || associationIndex === null) {
-        // Flat document – delete whole doc
         await deleteDoc(doc(db, 'cso-disapproved', provinceDocId));
       } else {
-        // Nested: remove the specific association from the array
         const provinceDocRef = doc(db, 'cso-disapproved', provinceDocId);
-        const provinceDoc = provinceDocs.find(d => d.id === provinceDocId);
-        const associationToRemove = provinceDoc?.associations[associationIndex];
-        if (associationToRemove) {
-          await updateDoc(provinceDocRef, {
-            associations: arrayRemove(associationToRemove),
-            updatedAt: serverTimestamp()
-          });
+        const docSnap = await getDoc(provinceDocRef);
+        if (docSnap.exists()) {
+          const currentAssociations = docSnap.data().associations || [];
+          const updatedAssociations = currentAssociations.filter((_, idx) => idx !== associationIndex);
+          await updateDoc(provinceDocRef, { associations: updatedAssociations, updatedAt: serverTimestamp() });
         }
       }
-
-      setSuccess(`${selectedRecord.name_of_association} permanently deleted.`);
+      setSuccess(`${selectedRecord.name_of_association || 'Record'} permanently deleted.`);
       setShowDeleteModal(false);
       setSelectedRecord(null);
-      fetchDisapprovedData();
+      await fetchDisapprovedData();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error('Error permanently deleting disapproved record:', err);
       setError('Failed to delete record. Please try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
-  // ---------- Restore to deliberation (move to 'cso' collection) ----------
+  // Handle Restore
   const handleRestore = async () => {
     if (!selectedRecord) return;
     try {
+      setSaving(true);
       const { provinceDocId, associationIndex } = selectedRecord;
-
-      // Build the restored object (same shape as active CSO)
       const restoredData = {
         no: selectedRecord.no,
         name_of_association: selectedRecord.name_of_association,
@@ -645,987 +728,214 @@ const CsoDisapproved = () => {
         nature_of_services: selectedRecord.nature_of_services,
         for_deliberation: true,
         restoredFromDisapproved: true,
-        restoredAt: serverTimestamp()
+        restoredAt: new Date().toISOString()
       };
-
       await addDoc(collection(db, 'cso'), restoredData);
-
       if (!provinceDocId || associationIndex === null) {
         await deleteDoc(doc(db, 'cso-disapproved', provinceDocId));
       } else {
         const provinceDocRef = doc(db, 'cso-disapproved', provinceDocId);
-        const provinceDoc = provinceDocs.find(d => d.id === provinceDocId);
-        const associationToRemove = provinceDoc?.associations[associationIndex];
-        if (associationToRemove) {
-          await updateDoc(provinceDocRef, {
-            associations: arrayRemove(associationToRemove),
-            updatedAt: serverTimestamp()
-          });
+        const docSnap = await getDoc(provinceDocRef);
+        if (docSnap.exists()) {
+          const currentAssociations = docSnap.data().associations || [];
+          const updatedAssociations = currentAssociations.filter((_, idx) => idx !== associationIndex);
+          await updateDoc(provinceDocRef, { associations: updatedAssociations, updatedAt: serverTimestamp() });
         }
       }
-
       setSuccess(`${selectedRecord.name_of_association} moved back to deliberation.`);
       setShowRestoreModal(false);
       setSelectedRecord(null);
-      fetchDisapprovedData();
+      await fetchDisapprovedData();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error('Error restoring disapproved record:', err);
       setError('Failed to restore record. Please try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleView = (record) => {
-    setSelectedRecord(record);
-    setShowViewModal(true);
-  };
+  const handleView = (record) => { setSelectedRecord(record); setShowViewModal(true); };
+  const openEditModal = (record) => { setSelectedRecord(record); setShowEditModal(true); };
+  const openRestoreModal = (record) => { setSelectedRecord(record); setShowViewModal(false); setShowRestoreModal(true); };
+  const openDeleteModal = (record) => { setSelectedRecord(record); setShowViewModal(false); setShowDeleteModal(true); };
+  const handleSort = (field) => setSortConfig(prev => ({ field, direction: prev.field === field && prev.direction === 'asc' ? 'desc' : 'asc' }));
+  const handleFilterChange = (filterName, value) => { setFilters(prev => ({ ...prev, [filterName]: value })); setPagination(prev => ({ ...prev, currentPage: 1 })); };
+  const handlePageChange = (page) => setPagination(prev => ({ ...prev, currentPage: page }));
+  const handleRowsPerPageChange = (rows) => setPagination(prev => ({ ...prev, rowsPerPage: rows, currentPage: 1 }));
 
-  const openRestoreModal = (record) => {
-    setSelectedRecord(record);
-    setShowViewModal(false);
-    setShowRestoreModal(true);
-  };
-
-  const openDeleteModal = (record) => {
-    setSelectedRecord(record);
-    setShowViewModal(false);
-    setShowDeleteModal(true);
-  };
-
-  // ---------- Sort handler ----------
-  const handleSort = (field) => {
-    setSortConfig(prev => ({
-      field,
-      direction: prev.field === field && prev.direction === 'asc' ? 'desc' : 'asc'
-    }));
-  };
-
-  const handleFilterChange = (filterName, value) => {
-    setFilters(prev => ({ ...prev, [filterName]: value }));
-    setPagination(prev => ({ ...prev, currentPage: 1 }));
-  };
-
-  const handlePageChange = (page) => {
-    setPagination(prev => ({ ...prev, currentPage: page }));
-  };
-
-  const handleRowsPerPageChange = (rows) => {
-    setPagination(prev => ({ ...prev, rowsPerPage: rows, currentPage: 1 }));
-  };
-
-  // ---------- Filtered and sorted data ----------
   const filteredData = useMemo(() => {
     let filtered = [...disapprovedData];
-
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
       filtered = filtered.filter(item =>
         item.name_of_association?.toLowerCase().includes(searchLower) ||
         item.contact_person?.toLowerCase().includes(searchLower) ||
-        item.accreditation_no?.toLowerCase().includes(searchLower) ||
         item.address?.toLowerCase().includes(searchLower) ||
         item.province?.toLowerCase().includes(searchLower)
       );
     }
-
-    if (filters.scope !== 'all') {
-      filtered = filtered.filter(item => item.scope === filters.scope);
-    }
-
-    if (filters.province !== 'all') {
-      filtered = filtered.filter(item => item.province === filters.province);
-    }
-
+    if (filters.scope !== 'all') filtered = filtered.filter(item => item.scope === filters.scope);
+    if (filters.province !== 'all') filtered = filtered.filter(item => item.province === filters.province);
     filtered.sort((a, b) => {
       let aValue = a[sortConfig.field];
       let bValue = b[sortConfig.field];
-
-      if (sortConfig.field === 'no') {
-        aValue = parseInt(aValue) || 0;
-        bValue = parseInt(bValue) || 0;
-      } else if (sortConfig.field === 'date_of_receipt') {
-        aValue = aValue ? new Date(aValue).getTime() : 0;
-        bValue = bValue ? new Date(bValue).getTime() : 0;
-      }
-
+      if (sortConfig.field === 'no') { aValue = parseInt(aValue) || 0; bValue = parseInt(bValue) || 0; }
+      else if (sortConfig.field === 'date_of_receipt') { aValue = aValue ? new Date(aValue).getTime() : 0; bValue = bValue ? new Date(bValue).getTime() : 0; }
       if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
     });
-
     return filtered;
   }, [disapprovedData, searchTerm, filters, sortConfig]);
 
   const paginatedData = useMemo(() => {
     const startIndex = (pagination.currentPage - 1) * pagination.rowsPerPage;
-    const endIndex = startIndex + pagination.rowsPerPage;
-    return filteredData.slice(startIndex, endIndex);
-  }, [filteredData, pagination]);
+    return filteredData.slice(startIndex, startIndex + pagination.rowsPerPage);
+  }, [filteredData, pagination.currentPage, pagination.rowsPerPage]);
 
   useEffect(() => {
-    setPagination(prev => ({
-      ...prev,
-      totalPages: Math.ceil(filteredData.length / prev.rowsPerPage)
-    }));
+    setPagination(prev => ({ ...prev, totalPages: Math.ceil(filteredData.length / prev.rowsPerPage) || 1 }));
   }, [filteredData.length, pagination.rowsPerPage]);
 
-  // ---------- Export to Excel (uses flattened data, groups by province) ----------
+  const provinces = useMemo(() => [...new Set(disapprovedData.map(item => item.province).filter(Boolean))].sort(), [disapprovedData]);
+
+  // Export to Excel
   const exportToExcel = async () => {
     try {
-      const processedData = disapprovedData.map(item => ({
-        ...item,
-        numericNo: parseInt(item.no) || 0
-      }));
-
+      const processedData = disapprovedData.map(item => ({ ...item, numericNo: parseInt(item.no) || 0 }));
       const groupedData = {};
       processedData.forEach(item => {
         const province = item.province || 'Unknown Province';
         if (!groupedData[province]) groupedData[province] = [];
         groupedData[province].push(item);
       });
-
-      Object.keys(groupedData).forEach(province => {
-        groupedData[province].sort((a, b) => a.numericNo - b.numericNo);
-      });
-
+      Object.keys(groupedData).forEach(province => { groupedData[province].sort((a, b) => a.numericNo - b.numericNo); });
       const provinceOrder = ['Occidental Mindoro', 'Oriental Mindoro', 'Marinduque', 'Palawan', 'Romblon', 'Unknown'];
       const sortedProvinces = Object.keys(groupedData).sort((a, b) => {
         const indexA = provinceOrder.indexOf(a);
         const indexB = provinceOrder.indexOf(b);
         return (indexA === -1 ? 99 : indexA) - (indexB === -1 ? 99 : indexB);
       });
-
       const now = new Date();
       const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
       const currentMonth = monthNames[now.getMonth()];
       const currentYear = now.getFullYear();
-
       const wb = XLSXStyle.utils.book_new();
-
-      // Styles (same as before)
-      const titleStyle = {
-        font: { name: 'Arial', sz: 16, bold: true },
-        alignment: { horizontal: "center", vertical: "center" },
-        fill: { fgColor: { rgb: "FEF3C7" }, patternType: "solid" }
-      };
-      const subtitleStyle = {
-        font: { name: 'Arial', sz: 14, italic: true },
-        alignment: { horizontal: "center", vertical: "center" },
-        fill: { fgColor: { rgb: "FDE68A" }, patternType: "solid" }
-      };
-      const headerStyle = {
-        font: { name: 'Arial', sz: 12, bold: true, color: { rgb: "FFFFFF" } },
-        alignment: { horizontal: "center", vertical: "center", wrapText: true },
-        fill: { fgColor: { rgb: "D97706" }, patternType: "solid" },
-        border: {
-          top: { style: "thin" }, bottom: { style: "thin" },
-          left: { style: "thin" }, right: { style: "thin" }
-        }
-      };
-      const provinceHeaderStyle = {
-        font: { name: 'Arial', sz: 14, bold: true },
-        fill: { fgColor: { rgb: "FCD34D" }, patternType: "solid" },
-        alignment: { horizontal: "left", vertical: "center" },
-        border: { top: { style: "medium" }, bottom: { style: "medium" }, left: { style: "medium" }, right: { style: "medium" } }
-      };
-      const dataStyle = {
-        font: { name: 'Arial', sz: 11 },
-        alignment: { vertical: "center", wrapText: true },
-        border: {
-          top: { style: "thin" }, bottom: { style: "thin" },
-          left: { style: "thin" }, right: { style: "thin" }
-        }
-      };
-      const centerStyle = { ...dataStyle, alignment: { horizontal: "center", vertical: "center" } };
-
-      const wsData = [];
-      const merges = [];
-
-      wsData.push(['LIST OF DISAPPROVED CIVIL SOCIETY ORGANIZATIONS']);
-      wsData.push([`as of ${currentMonth} ${currentYear}`]);
-      wsData.push([]);
-      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 10 } });
-      merges.push({ s: { r: 1, c: 0 }, e: { r: 1, c: 10 } });
-
-      wsData.push([
-        'NO.', 'NAME OF ASSOCIATION', 'CONTACT PERSON', 'CONTACT NO.',
-        'EMAIL', 'PROVINCE', 'SCOPE', 'NATURE OF SERVICES',
-        'REASON FOR DISAPPROVAL', 'DATE OF RECEIPT', 'REMARKS'
-      ]);
-
+      const wsData = [['LIST OF DISAPPROVED CIVIL SOCIETY ORGANIZATIONS'], [`as of ${currentMonth} ${currentYear}`], []];
+      const merges = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 10 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } }];
+      wsData.push(['NO.', 'NAME OF ASSOCIATION', 'CONTACT PERSON', 'CONTACT NO.', 'EMAIL', 'PROVINCE', 'SCOPE', 'NATURE OF SERVICES', 'REASON FOR DISAPPROVAL', 'DATE OF RECEIPT', 'REMARKS']);
       let currentRow = 4;
-
       sortedProvinces.forEach(province => {
-        const pRow = Array(11).fill('');
-        pRow[0] = province.toUpperCase();
-        wsData.push(pRow);
+        wsData.push([province.toUpperCase(), ...Array(10).fill('')]);
         merges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: 10 } });
         currentRow++;
-
         groupedData[province].forEach(item => {
-          wsData.push([
-            item.no || '',
-            item.name_of_association || '',
-            item.contact_person || '',
-            item.contact_number || '',
-            item.email_address || '',
-            item.province || '',
-            item.scope || '',
-            item.nature_of_services || '',
-            item.reason_for_disapproval || '',
-            item.date_of_receipt || '',
-            item.remarks || ''
-          ]);
+          wsData.push([item.no || '', item.name_of_association || '', item.contact_person || '', item.contact_number || '', item.email_address || '', item.province || '', item.scope || '', item.nature_of_services || '', item.reason_for_disapproval || '', item.date_of_receipt || '', item.remarks || '']);
           currentRow++;
         });
         wsData.push(Array(11).fill(''));
         currentRow++;
       });
-
       const ws = XLSXStyle.utils.aoa_to_sheet(wsData);
-      ws['!cols'] = [
-        { wch: 8 }, { wch: 45 }, { wch: 25 }, { wch: 18 },
-        { wch: 30 }, { wch: 20 }, { wch: 15 }, { wch: 35 },
-        { wch: 60 }, { wch: 18 }, { wch: 30 }
-      ];
-
-      ws['!rows'] = wsData.map((row, i) => {
-        if (i === 0) return { hpt: 40 };
-        if (i === 1) return { hpt: 35 };
-        if (i === 3) return { hpt: 30 };
-        if (row && row[0] && !sortedProvinces.includes(row[0])) return { hpt: 35 };
-        return { hpt: 25 };
-      });
-
-      const range = XLSXStyle.utils.decode_range(ws['!ref']);
-      for (let R = range.s.r; R <= range.e.r; ++R) {
-        for (let C = range.s.c; C <= range.e.c; ++C) {
-          const address = XLSXStyle.utils.encode_cell({ r: R, c: C });
-          const cell = ws[address];
-          if (!cell) continue;
-          if (R === 0) cell.s = titleStyle;
-          else if (R === 1) cell.s = subtitleStyle;
-          else if (R === 3) cell.s = headerStyle;
-          else {
-            const isProvince = sortedProvinces.some(p => wsData[R] && wsData[R][0] === p.toUpperCase());
-            if (isProvince) cell.s = provinceHeaderStyle;
-            else if (wsData[R] && wsData[R][0] !== '') {
-              cell.s = ([0, 6].includes(C)) ? centerStyle : dataStyle;
-            }
-          }
-        }
-      }
-
+      ws['!cols'] = [{ wch: 8 }, { wch: 45 }, { wch: 25 }, { wch: 18 }, { wch: 30 }, { wch: 20 }, { wch: 15 }, { wch: 35 }, { wch: 60 }, { wch: 18 }, { wch: 30 }];
       ws['!merges'] = merges;
       XLSXStyle.utils.book_append_sheet(wb, ws, 'Disapproved CSOs');
       const excelBuffer = XLSXStyle.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
       saveAs(new Blob([excelBuffer]), `Disapproved_CSO_Organizations.xlsx`);
       setSuccess('Export Complete!');
-    } catch (err) {
-      console.error(err);
-      setError('Failed to export Excel');
-    }
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) { console.error(err); setError('Failed to export Excel'); }
   };
 
-  // ---------- Table Columns ----------
   const columns = [
-    {
-      key: 'no',
-      header: 'No.',
-      sortable: true,
-      render: (row) => (
-        <div className="font-mono font-bold text-gray-900">{row.no}</div>
-      )
-    },
-    {
-      key: 'name_of_association',
-      header: 'Association Name',
-      sortable: true,
-      render: (row) => (
-        <div>
-          <div className="font-semibold text-gray-900">{row.name_of_association || '—'}</div>
-          <div className="text-sm text-gray-500 flex items-center mt-1">
-            <MapPin className="h-3 w-3 mr-1" />
-            {row.province || 'No province'}
-          </div>
-        </div>
-      )
-    },
-    {
-      key: 'contact_person',
-      header: 'Contact Person',
-      sortable: true,
-      render: (row) => (
-        <div>
-          <div className="font-medium text-gray-900">{row.contact_person || '—'}</div>
-          <div className="text-sm text-gray-500">{row.position}</div>
-        </div>
-      )
-    },
-    {
-      key: 'scope',
-      header: 'Scope',
-      render: (row) => (
-        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-          row.scope === 'Regional' ? 'bg-blue-100 text-blue-800' :
-          row.scope === 'National' ? 'bg-purple-100 text-purple-800' :
-          'bg-gray-100 text-gray-800'
-        }`}>
-          {row.scope}
-        </span>
-      )
-    },
-    {
-      key: 'reason_for_disapproval',
-      header: 'Reason',
-      render: (row) => (
-        <div className="max-w-xs">
-          <p className="text-sm text-gray-700 truncate" title={row.reason_for_disapproval}>
-            {row.reason_for_disapproval || '—'}
-          </p>
-        </div>
-      )
-    },
-    {
-      key: 'actions',
-      header: 'Actions',
-      render: (row) => (
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => handleView(row)}
-            className="p-1.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            title="View Details"
-          >
-            <Eye className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => openEditModal(row)}
-            className="p-1.5 text-gray-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-            title="Edit Record"
-          >
-            <Edit className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => openRestoreModal(row)}
-            className="p-1.5 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-            title="Restore to Deliberation"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => openDeleteModal(row)}
-            className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            title="Permanently Delete"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
-      )
-    }
+    { key: 'no', header: 'No.', sortable: true, render: (row) => <div className="font-mono font-bold text-gray-900">{row.no}</div> },
+    { key: 'name_of_association', header: 'Association Name', sortable: true, render: (row) => (<div><div className="font-semibold text-gray-900">{row.name_of_association || '—'}</div><div className="text-sm text-gray-500 flex items-center mt-1"><MapPin className="h-3 w-3 mr-1" />{row.province || 'No province'}</div></div>) },
+    { key: 'contact_person', header: 'Contact Person', sortable: true, render: (row) => (<div><div className="font-medium text-gray-900">{row.contact_person || '—'}</div><div className="text-sm text-gray-500">{row.position}</div></div>) },
+    { key: 'scope', header: 'Scope', render: (row) => (<span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${row.scope === 'Regional' ? 'bg-blue-100 text-blue-800' : row.scope === 'National' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>{row.scope}</span>) },
+    { key: 'reason_for_disapproval', header: 'Reason', render: (row) => (<div className="max-w-xs"><p className="text-sm text-gray-700 truncate" title={row.reason_for_disapproval}>{row.reason_for_disapproval || '—'}</p></div>) },
+    { key: 'actions', header: 'Actions', render: (row) => (<div className="flex items-center space-x-2"><button onClick={() => handleView(row)} className="p-1.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Eye className="h-4 w-4" /></button><button onClick={() => openEditModal(row)} className="p-1.5 text-gray-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg"><Edit className="h-4 w-4" /></button><button onClick={() => openRestoreModal(row)} className="p-1.5 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg"><RefreshCw className="h-4 w-4" /></button><button onClick={() => openDeleteModal(row)} className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="h-4 w-4" /></button></div>) }
   ];
 
-  const provinces = useMemo(() => {
-    const uniqueProvinces = [...new Set(disapprovedData.map(item => item.province).filter(Boolean))];
-    return uniqueProvinces.sort();
-  }, [disapprovedData]);
-
-  // ---------- Form Input Components ----------
-  const FormInput = ({ label, id, type = 'text', value, onChange, required = false, className = '', ...props }) => (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-sm font-medium text-gray-700">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <input
-        id={id}
-        type={type}
-        value={value}
-        onChange={onChange}
-        className={`w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition text-black ${className}`}
-        {...props}
-      />
-    </div>
-  );
-
-  const FormSelect = ({ label, id, value, onChange, options, required = false }) => (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-sm font-medium text-gray-700">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <select
-        id={id}
-        value={value}
-        onChange={onChange}
-        className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black"
-      >
-        {options.map(opt => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
-        ))}
-      </select>
-    </div>
-  );
-
-  const FormTextarea = ({ label, id, value, onChange, rows = 3 }) => (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-sm font-medium text-gray-700">
-        {label}
-      </label>
-      <textarea
-        id={id}
-        rows={rows}
-        value={value}
-        onChange={onChange}
-        className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black"
-      />
-    </div>
-  );
-
-  // ---------- Render ----------
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50/50 via-white to-orange-50/30 p-4 md:p-6">
       {/* Header */}
       <div className="mb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-amber-700 to-orange-700 bg-clip-text text-transparent">
-              Disapproved CSO Records
-            </h1>
-            <p className="text-gray-600 mt-2 flex items-center">
-              <ThumbsDown className="h-5 w-5 mr-2 text-amber-500" />
-              Civil Society Organizations whose accreditation was disapproved
-            </p>
+            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-amber-700 to-orange-700 bg-clip-text text-transparent">Disapproved CSO Records</h1>
+            <p className="text-gray-600 mt-2 flex items-center"><ThumbsDown className="h-5 w-5 mr-2 text-amber-500" />Civil Society Organizations whose accreditation was disapproved</p>
           </div>
-
           <div className="flex flex-wrap gap-3">
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={openAddModal}
-              className="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-semibold rounded-xl shadow-lg hover:from-emerald-700 hover:to-green-700 transition-all"
-            >
-              <Plus className="h-5 w-5 mr-2" />
-              Add Disapproved Record
-            </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={exportToExcel}
-              className="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 text-white font-semibold rounded-xl shadow-lg hover:from-amber-700 hover:to-orange-700 transition-all"
-            >
-              <Download className="h-5 w-5 mr-2" />
-              Export Excel
-            </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={fetchDisapprovedData}
-              className="inline-flex items-center px-5 py-2.5 bg-white text-gray-700 font-semibold rounded-xl shadow-lg border border-gray-200 hover:bg-gray-50 transition-all"
-            >
-              <RefreshCw className="h-5 w-5 mr-2" />
-              Refresh
-            </motion.button>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowAddModal(true)} className="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-semibold rounded-xl shadow-lg hover:from-emerald-700 hover:to-green-700 transition"><Plus className="h-5 w-5 mr-2" />Add Disapproved Record</motion.button>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={exportToExcel} className="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 text-white font-semibold rounded-xl shadow-lg hover:from-amber-700 hover:to-orange-700 transition"><Download className="h-5 w-5 mr-2" />Export Excel</motion.button>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={fetchDisapprovedData} className="inline-flex items-center px-5 py-2.5 bg-white text-gray-700 font-semibold rounded-xl shadow-lg border border-gray-200 hover:bg-gray-50 transition"><RefreshCw className="h-5 w-5 mr-2" />Refresh</motion.button>
           </div>
         </div>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <motion.div whileHover={{ y: -4 }} className="bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl shadow-xl p-6 text-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-amber-100 text-sm font-medium">Total Disapproved</p>
-              <p className="text-3xl font-bold mt-2">{stats.total}</p>
-            </div>
-            <ThumbsDown className="h-12 w-12 opacity-80" />
-          </div>
-          <div className="mt-4 pt-4 border-t border-amber-400">
-            <p className="text-amber-100 text-sm">
-              {stats.total > 0 ? `${Object.keys(stats.byProvince).length} provinces` : 'No records'}
-            </p>
-          </div>
-        </motion.div>
-
-        <motion.div whileHover={{ y: -4 }} className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl shadow-xl p-6 text-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-blue-100 text-sm font-medium">Top Province</p>
-              <p className="text-xl font-bold mt-2 truncate max-w-[150px]">
-                {Object.entries(stats.byProvince).sort((a,b) => b[1] - a[1])[0]?.[0] || 'N/A'}
-              </p>
-            </div>
-            <MapPin className="h-12 w-12 opacity-80" />
-          </div>
-          <div className="mt-4 pt-4 border-t border-blue-400">
-            <p className="text-blue-100 text-sm">
-              {Object.entries(stats.byProvince).sort((a,b) => b[1] - a[1])[0]?.[1] || 0} records
-            </p>
-          </div>
-        </motion.div>
-
-        <motion.div whileHover={{ y: -4 }} className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl shadow-xl p-6 text-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-purple-100 text-sm font-medium">Most Common Reason</p>
-              <p className="text-sm font-bold mt-2 truncate max-w-[200px]">
-                {stats.topReason}
-              </p>
-            </div>
-            <FileText className="h-12 w-12 opacity-80" />
-          </div>
-          <div className="mt-4 pt-4 border-t border-purple-400">
-            <p className="text-purple-100 text-sm">Based on disapproval notes</p>
-          </div>
-        </motion.div>
+        <motion.div whileHover={{ y: -4 }} className="bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl shadow-xl p-6 text-white"><div className="flex items-center justify-between"><div><p className="text-amber-100 text-sm font-medium">Total Disapproved</p><p className="text-3xl font-bold mt-2">{stats.total}</p></div><ThumbsDown className="h-12 w-12 opacity-80" /></div><div className="mt-4 pt-4 border-t border-amber-400"><p className="text-amber-100 text-sm">{stats.total > 0 ? `${Object.keys(stats.byProvince).length} provinces` : 'No records'}</p></div></motion.div>
+        <motion.div whileHover={{ y: -4 }} className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl shadow-xl p-6 text-white"><div className="flex items-center justify-between"><div><p className="text-blue-100 text-sm font-medium">Top Province</p><p className="text-xl font-bold mt-2 truncate max-w-[150px]">{Object.entries(stats.byProvince).sort((a,b) => b[1] - a[1])[0]?.[0] || 'N/A'}</p></div><MapPin className="h-12 w-12 opacity-80" /></div><div className="mt-4 pt-4 border-t border-blue-400"><p className="text-blue-100 text-sm">{Object.entries(stats.byProvince).sort((a,b) => b[1] - a[1])[0]?.[1] || 0} records</p></div></motion.div>
+        <motion.div whileHover={{ y: -4 }} className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl shadow-xl p-6 text-white"><div className="flex items-center justify-between"><div><p className="text-purple-100 text-sm font-medium">Most Common Reason</p><p className="text-sm font-bold mt-2 truncate max-w-[200px]">{stats.topReason}</p></div><FileText className="h-12 w-12 opacity-80" /></div><div className="mt-4 pt-4 border-t border-purple-400"><p className="text-purple-100 text-sm">Based on disapproval notes</p></div></motion.div>
       </div>
 
       {/* Error & Success Messages */}
       <AnimatePresence>
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-lg"
-          >
-            <div className="flex items-center">
-              <AlertCircle className="h-5 w-5 text-red-500 mr-3 flex-shrink-0" />
-              <div className="text-red-700 font-medium flex-1">{error}</div>
-              <button onClick={() => setError('')} className="text-red-500 hover:text-red-700">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-          </motion.div>
-        )}
-
-        {success && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="mb-6 bg-green-50 border-l-4 border-green-500 p-4 rounded-lg"
-          >
-            <div className="flex items-center">
-              <Check className="h-5 w-5 text-green-500 mr-3 flex-shrink-0" />
-              <div className="text-green-700 font-medium flex-1">{success}</div>
-              <button onClick={() => setSuccess('')} className="text-green-500 hover:text-green-700">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-          </motion.div>
-        )}
+        {error && (<motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-lg"><div className="flex items-center"><AlertCircle className="h-5 w-5 text-red-500 mr-3" /><div className="text-red-700 font-medium flex-1">{error}</div><button onClick={() => setError('')}><X className="h-5 w-5 text-red-500" /></button></div></motion.div>)}
+        {success && (<motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mb-6 bg-green-50 border-l-4 border-green-500 p-4 rounded-lg"><div className="flex items-center"><Check className="h-5 w-5 text-green-500 mr-3" /><div className="text-green-700 font-medium flex-1">{success}</div><button onClick={() => setSuccess('')}><X className="h-5 w-5 text-green-500" /></button></div></motion.div>)}
       </AnimatePresence>
 
       {/* Search & Filters */}
       <div className="mb-6 bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-100 p-6">
         <div className="flex flex-col lg:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by name, contact, province..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black"
-              />
-              {searchTerm && (
-                <button
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <select
-              value={filters.scope}
-              onChange={(e) => handleFilterChange('scope', e.target.value)}
-              className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-black"
-            >
-              <option value="all">All Scopes</option>
-              <option value="Regional">Regional</option>
-              <option value="National">National</option>
-              <option value="Local">Local</option>
-            </select>
-
-            <select
-              value={filters.province}
-              onChange={(e) => handleFilterChange('province', e.target.value)}
-              className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-black"
-            >
-              <option value="all">All Provinces</option>
-              {provinces.map(province => (
-                <option key={province} value={province}>{province}</option>
-              ))}
-            </select>
-          </div>
+          <div className="flex-1 relative"><Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" /><input type="text" placeholder="Search by name, contact, province..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-black" />{searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>}</div>
+          <div className="flex flex-wrap gap-3"><select value={filters.scope} onChange={(e) => handleFilterChange('scope', e.target.value)} className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-black"><option value="all">All Scopes</option><option value="Regional">Regional</option><option value="National">National</option><option value="Local">Local</option></select><select value={filters.province} onChange={(e) => handleFilterChange('province', e.target.value)} className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-black"><option value="all">All Provinces</option>{provinces.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
         </div>
-
-        <div className="mt-4 flex items-center justify-between">
-          <div className="text-gray-600">
-            Showing <span className="font-semibold text-amber-600">{filteredData.length}</span> of{' '}
-            <span className="font-semibold">{disapprovedData.length}</span> disapproved records
-            {searchTerm && (
-              <span className="ml-2 text-sm bg-amber-100 text-amber-800 px-3 py-1 rounded-full">
-                Searching: "{searchTerm}"
-              </span>
-            )}
-          </div>
-          <div className="text-sm text-gray-500">
-            Last updated: {new Date().toLocaleString()}
-          </div>
-        </div>
+        <div className="mt-4 flex items-center justify-between"><div className="text-gray-600">Showing <span className="font-semibold text-amber-600">{filteredData.length}</span> of <span className="font-semibold">{disapprovedData.length}</span> disapproved records{searchTerm && <span className="ml-2 text-sm bg-amber-100 text-amber-800 px-3 py-1 rounded-full">Searching: "{searchTerm}"</span>}</div><div className="text-sm text-gray-500">Last updated: {new Date().toLocaleString()}</div></div>
       </div>
 
       {/* Data Table */}
-      <DataTable
-        columns={columns}
-        data={paginatedData}
-        onRowClick={handleView}
-        isLoading={loading}
-        onSort={handleSort}
-        sortField={sortConfig.field}
-        sortDirection={sortConfig.direction}
-        pagination={{
-          currentPage: pagination.currentPage,
-          totalPages: pagination.totalPages,
-          rowsPerPage: pagination.rowsPerPage,
-          total: filteredData.length,
-          startIndex: (pagination.currentPage - 1) * pagination.rowsPerPage,
-          endIndex: Math.min(pagination.currentPage * pagination.rowsPerPage, filteredData.length)
-        }}
-        onPageChange={handlePageChange}
-        onRowsPerPageChange={handleRowsPerPageChange}
-      />
+      <DataTable columns={columns} data={paginatedData} onRowClick={handleView} isLoading={loading} onSort={handleSort} sortField={sortConfig.field} sortDirection={sortConfig.direction} pagination={{ currentPage: pagination.currentPage, totalPages: pagination.totalPages, rowsPerPage: pagination.rowsPerPage, total: filteredData.length, startIndex: (pagination.currentPage - 1) * pagination.rowsPerPage, endIndex: Math.min(pagination.currentPage * pagination.rowsPerPage, filteredData.length) }} onPageChange={handlePageChange} onRowsPerPageChange={handleRowsPerPageChange} />
 
       {/* Footer */}
-      <div className="mt-8 pt-6 border-t border-gray-200">
-        <div className="flex flex-col md:flex-row justify-between items-center text-gray-600 text-sm">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center">
-              <ThumbsDown className="h-4 w-4 mr-2 text-amber-500" />
-              <span>Disapproved CSO Archive</span>
-            </div>
-            <div className="hidden md:block">•</div>
-            <div className="flex items-center">
-              <Users className="h-4 w-4 mr-2 text-blue-500" />
-              <span>{disapprovedData.length} Disapproved Organizations</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <div className="mt-8 pt-6 border-t border-gray-200"><div className="flex flex-col md:flex-row justify-between items-center text-gray-600 text-sm"><div className="flex items-center space-x-4"><div className="flex items-center"><ThumbsDown className="h-4 w-4 mr-2 text-amber-500" /><span>Disapproved CSO Archive</span></div><div className="hidden md:block">•</div><div className="flex items-center"><Users className="h-4 w-4 mr-2 text-blue-500" /><span>{disapprovedData.length} Disapproved Organizations</span></div></div></div></div>
 
-      {/* ---------- ADD / EDIT MODAL ---------- */}
-      <Modal
-        isOpen={showAddModal || showEditModal}
-        onClose={() => {
-          setShowAddModal(false);
-          setShowEditModal(false);
-          resetForm();
-        }}
-        title={showAddModal ? 'Add Disapproved Record' : 'Edit Disapproved Record'}
-        size="xl"
-      >
-        <form onSubmit={(e) => { 
-          e.preventDefault(); 
-          if (showAddModal) handleAddRecord();
-          else handleUpdateRecord();
-        }} className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Left Column */}
-            <div className="space-y-4">
-              <FormInput
-                label="No."
-                id="no"
-                type="number"
-                value={formData.no}
-                onChange={(e) => setFormData({ ...formData, no: e.target.value })}
-              />
-              <FormInput
-                label="Name of Association"
-                id="name_of_association"
-                value={formData.name_of_association}
-                onChange={(e) => setFormData({ ...formData, name_of_association: e.target.value })}
-                required
-              />
-              <FormInput
-                label="Contact Person"
-                id="contact_person"
-                value={formData.contact_person}
-                onChange={(e) => setFormData({ ...formData, contact_person: e.target.value })}
-              />
-              <FormInput
-                label="Position"
-                id="position"
-                value={formData.position}
-                onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-              />
-              <FormInput
-                label="Contact Number"
-                id="contact_number"
-                value={formData.contact_number}
-                onChange={(e) => setFormData({ ...formData, contact_number: e.target.value })}
-              />
-              <FormInput
-                label="Email Address"
-                id="email_address"
-                type="email"
-                value={formData.email_address}
-                onChange={(e) => setFormData({ ...formData, email_address: e.target.value })}
-              />
-              <FormInput
-                label="Number of Members"
-                id="no_of_members"
-                value={formData.no_of_members}
-                onChange={(e) => setFormData({ ...formData, no_of_members: e.target.value })}
-              />
-            </div>
-
-            {/* Right Column */}
-            <div className="space-y-4">
-              <FormInput
-                label="Address"
-                id="address"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              />
-              <FormInput
-                label="Province"
-                id="province"
-                value={formData.province}
-                onChange={(e) => setFormData({ ...formData, province: e.target.value })}
-                required
-              />
-              <FormSelect
-                label="Scope"
-                id="scope"
-                value={formData.scope}
-                onChange={(e) => setFormData({ ...formData, scope: e.target.value })}
-                options={[
-                  { value: 'Regional', label: 'Regional' },
-                  { value: 'National', label: 'National' },
-                  { value: 'Local', label: 'Local' }
-                ]}
-              />
-              <FormTextarea
-                label="Nature of Services"
-                id="nature_of_services"
-                value={formData.nature_of_services}
-                onChange={(e) => setFormData({ ...formData, nature_of_services: e.target.value })}
-                rows={2}
-              />
-              <FormTextarea
-                label="Reason for Disapproval"
-                id="reason_for_disapproval"
-                value={formData.reason_for_disapproval}
-                onChange={(e) => setFormData({ ...formData, reason_for_disapproval: e.target.value })}
-                rows={3}
-              />
-              <FormInput
-                label="Date of Receipt"
-                id="date_of_receipt"
-                type="date"
-                value={formData.date_of_receipt}
-                onChange={(e) => setFormData({ ...formData, date_of_receipt: e.target.value })}
-              />
-              <FormInput
-                label="Remarks"
-                id="remarks"
-                value={formData.remarks}
-                onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={() => {
-                setShowAddModal(false);
-                setShowEditModal(false);
-                resetForm();
-              }}
-              className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-6 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 text-white font-medium rounded-xl hover:from-amber-700 hover:to-orange-700 transition disabled:opacity-50 flex items-center"
-            >
-              {saving ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  {showAddModal ? 'Add Record' : 'Update Record'}
-                </>
-              )}
-            </button>
-          </div>
-        </form>
+      {/* Add Modal */}
+      <Modal isOpen={showAddModal} onClose={() => { setShowAddModal(false); }} title="Add Disapproved Record" size="xl">
+        <DisapprovedForm onSave={handleAddRecord} onCancel={() => setShowAddModal(false)} isSaving={saving} isEdit={false} />
       </Modal>
 
-      {/* ---------- VIEW MODAL ---------- */}
-      <Modal
-        isOpen={showViewModal}
-        onClose={() => setShowViewModal(false)}
-        title="Disapproved CSO Details"
-        size="lg"
-      >
+      {/* Edit Modal */}
+      <Modal isOpen={showEditModal} onClose={() => { setShowEditModal(false); setSelectedRecord(null); }} title="Edit Disapproved Record" size="xl">
+        <DisapprovedForm initialData={selectedRecord} onSave={handleUpdateRecord} onCancel={() => { setShowEditModal(false); setSelectedRecord(null); }} isSaving={saving} isEdit={true} />
+      </Modal>
+
+      {/* View Modal */}
+      <Modal isOpen={showViewModal} onClose={() => setShowViewModal(false)} title="Disapproved CSO Details" size="lg">
         {selectedRecord && (
           <div className="space-y-6">
-            <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl p-6">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">{selectedRecord.name_of_association || 'Unnamed'}</h2>
-                  <div className="flex items-center mt-2 space-x-3">
-                    <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
-                      No. {selectedRecord.no || '—'}
-                    </span>
-                    <span className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-sm font-medium">
-                      Disapproved
-                    </span>
-                    <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-medium">
-                      {selectedRecord.scope || '—'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl p-6"><div><h2 className="text-2xl font-bold text-gray-900">{selectedRecord.name_of_association || 'Unnamed'}</h2><div className="flex items-center mt-2 space-x-3"><span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">No. {selectedRecord.no || '—'}</span><span className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-sm font-medium">Disapproved</span><span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-medium">{selectedRecord.scope || '—'}</span></div></div></div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Contact Info */}
-              <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <User className="h-5 w-5 mr-2 text-blue-600" />
-                  Contact Information
-                </h3>
-                <div className="space-y-3">
-                  <div><p className="text-sm text-gray-500">Contact Person</p><p className="font-medium text-black">{selectedRecord.contact_person || 'Not specified'}</p></div>
-                  <div><p className="text-sm text-gray-500">Position</p><p className="font-medium text-black">{selectedRecord.position || 'Not specified'}</p></div>
-                  <div><p className="text-sm text-gray-500">Contact Number</p><p className="font-medium text-black">{selectedRecord.contact_number || 'Not specified'}</p></div>
-                  <div><p className="text-sm text-gray-500">Email Address</p><p className="font-medium text-black">{selectedRecord.email_address || 'Not specified'}</p></div>
-                </div>
-              </div>
-
-              {/* Location & Members */}
-              <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <MapPin className="h-5 w-5 mr-2 text-green-600" />
-                  Location & Members
-                </h3>
-                <div className="space-y-3">
-                  <div><p className="text-sm text-gray-500">Address</p><p className="font-medium text-black">{selectedRecord.address || 'Not specified'}</p></div>
-                  <div><p className="text-sm text-gray-500">Province</p><p className="font-medium text-black">{selectedRecord.province || 'Not specified'}</p></div>
-                  <div><p className="text-sm text-gray-500">Number of Members</p><div className="flex items-center"><Users className="h-4 w-4 mr-2 text-purple-600" /><p className="font-medium text-black">{selectedRecord.no_of_members || '0'} members</p></div></div>
-                </div>
-              </div>
-
-              {/* Disapproval Details */}
-              <div className="md:col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <ThumbsDown className="h-5 w-5 mr-2 text-red-600" />
-                  Disapproval Information
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div><p className="text-sm text-gray-500">Date of Receipt</p><p className="font-medium text-black">{selectedRecord.date_of_receipt ? formatDate(selectedRecord.date_of_receipt) : 'Not specified'}</p></div>
-                  <div><p className="text-sm text-gray-500">Scope</p><p className="font-medium text-black">{selectedRecord.scope || 'Not specified'}</p></div>
-                </div>
-                <div className="mt-4">
-                  <p className="text-sm text-gray-500 mb-2">Reason for Disapproval</p>
-                  <div className="bg-red-50 rounded-lg p-4 border border-red-100">
-                    <p className="text-gray-800 whitespace-pre-line">{selectedRecord.reason_for_disapproval || 'No reason provided'}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Nature of Services & Remarks */}
-              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Nature of Services</h3>
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-gray-700 whitespace-pre-line">{selectedRecord.nature_of_services || 'No services specified'}</p>
-                  </div>
-                </div>
-                <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Remarks</h3>
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-gray-700 whitespace-pre-line">{selectedRecord.remarks || 'No remarks'}</p>
-                  </div>
-                </div>
-              </div>
+              <div className="bg-white border border-gray-200 rounded-xl p-5"><h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center"><User className="h-5 w-5 mr-2 text-blue-600" />Contact Information</h3><div className="space-y-3"><div><p className="text-sm text-gray-500">Contact Person</p><p className="font-medium text-black">{selectedRecord.contact_person || 'Not specified'}</p></div><div><p className="text-sm text-gray-500">Position</p><p className="font-medium text-black">{selectedRecord.position || 'Not specified'}</p></div><div><p className="text-sm text-gray-500">Contact Number</p><p className="font-medium text-black">{selectedRecord.contact_number || 'Not specified'}</p></div><div><p className="text-sm text-gray-500">Email Address</p><p className="font-medium text-black">{selectedRecord.email_address || 'Not specified'}</p></div></div></div>
+              <div className="bg-white border border-gray-200 rounded-xl p-5"><h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center"><MapPin className="h-5 w-5 mr-2 text-green-600" />Location & Members</h3><div className="space-y-3"><div><p className="text-sm text-gray-500">Address</p><p className="font-medium text-black">{selectedRecord.address || 'Not specified'}</p></div><div><p className="text-sm text-gray-500">Province</p><p className="font-medium text-black">{selectedRecord.province || 'Not specified'}</p></div><div><p className="text-sm text-gray-500">Number of Members</p><div className="flex items-center"><Users className="h-4 w-4 mr-2 text-purple-600" /><p className="font-medium text-black">{selectedRecord.no_of_members || '0'} members</p></div></div></div></div>
+              <div className="md:col-span-2 bg-white border border-gray-200 rounded-xl p-5"><h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center"><ThumbsDown className="h-5 w-5 mr-2 text-red-600" />Disapproval Information</h3><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4"><div><p className="text-sm text-gray-500">Date of Receipt</p><p className="font-medium text-black">{selectedRecord.date_of_receipt ? formatDate(selectedRecord.date_of_receipt) : 'Not specified'}</p></div><div><p className="text-sm text-gray-500">Scope</p><p className="font-medium text-black">{selectedRecord.scope || 'Not specified'}</p></div></div><div className="mt-4"><p className="text-sm text-gray-500 mb-2">Reason for Disapproval</p><div className="bg-red-50 rounded-lg p-4 border border-red-100"><p className="text-gray-800 whitespace-pre-line">{selectedRecord.reason_for_disapproval || 'No reason provided'}</p></div></div></div>
+              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6"><div className="bg-white border border-gray-200 rounded-xl p-5"><h3 className="text-lg font-semibold text-gray-900 mb-4">Nature of Services</h3><div className="bg-gray-50 rounded-lg p-4"><p className="text-gray-700 whitespace-pre-line">{selectedRecord.nature_of_services || 'No services specified'}</p></div></div><div className="bg-white border border-gray-200 rounded-xl p-5"><h3 className="text-lg font-semibold text-gray-900 mb-4">Remarks</h3><div className="bg-gray-50 rounded-lg p-4"><p className="text-gray-700 whitespace-pre-line">{selectedRecord.remarks || 'No remarks'}</p></div></div></div>
             </div>
-
-            <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
-              <button
-                onClick={() => { setShowViewModal(false); openEditModal(selectedRecord); }}
-                className="px-5 py-2.5 bg-amber-600 text-white font-medium rounded-xl hover:bg-amber-700 transition"
-              >
-                <Edit className="h-4 w-4 inline mr-2" />
-                Edit
-              </button>
-              <button
-                onClick={() => { setShowViewModal(false); openRestoreModal(selectedRecord); }}
-                className="px-5 py-2.5 bg-green-600 text-white font-medium rounded-xl hover:bg-green-700 transition"
-              >
-                <RefreshCw className="h-4 w-4 inline mr-2" />
-                Restore to Deliberation
-              </button>
-              <button
-                onClick={() => { setShowViewModal(false); openDeleteModal(selectedRecord); }}
-                className="px-5 py-2.5 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 transition"
-              >
-                <Trash2 className="h-4 w-4 inline mr-2" />
-                Delete
-              </button>
-            </div>
+            <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200"><button onClick={() => { setShowViewModal(false); openEditModal(selectedRecord); }} className="px-5 py-2.5 bg-amber-600 text-white font-medium rounded-xl hover:bg-amber-700 transition"><Edit className="h-4 w-4 inline mr-2" />Edit</button><button onClick={() => { setShowViewModal(false); openRestoreModal(selectedRecord); }} className="px-5 py-2.5 bg-green-600 text-white font-medium rounded-xl hover:bg-green-700 transition"><RefreshCw className="h-4 w-4 inline mr-2" />Restore to Deliberation</button><button onClick={() => { setShowViewModal(false); openDeleteModal(selectedRecord); }} className="px-5 py-2.5 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 transition"><Trash2 className="h-4 w-4 inline mr-2" />Delete</button></div>
           </div>
         )}
       </Modal>
 
       {/* Restore Confirmation Modal */}
       <Modal isOpen={showRestoreModal} onClose={() => setShowRestoreModal(false)} title="Restore to Deliberation" size="sm">
-        <div className="text-center py-6">
-          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
-            <RefreshCw className="h-8 w-8 text-green-600" />
-          </div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">Restore to Deliberation</h3>
-          <p className="text-gray-600 mb-6">
-            Are you sure you want to restore{' '}
-            <span className="font-semibold">{selectedRecord?.name_of_association}</span>?
-            This will move it back to the active deliberation queue.
-          </p>
-          <div className="flex justify-center space-x-3">
-            <button onClick={() => setShowRestoreModal(false)} className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition">Cancel</button>
-            <button onClick={handleRestore} className="px-6 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-medium rounded-lg hover:from-green-700 hover:to-emerald-700 transition">Restore Record</button>
-          </div>
-        </div>
+        <div className="text-center py-6"><div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4"><RefreshCw className="h-8 w-8 text-green-600" /></div><h3 className="text-xl font-semibold text-gray-900 mb-2">Restore to Deliberation</h3><p className="text-gray-600 mb-6">Are you sure you want to restore <span className="font-semibold">{selectedRecord?.name_of_association}</span>? This will move it back to the active deliberation queue.</p><div className="flex justify-center space-x-3"><button onClick={() => setShowRestoreModal(false)} className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition">Cancel</button><button onClick={handleRestore} className="px-6 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-medium rounded-lg hover:from-green-700 hover:to-emerald-700 transition">Restore Record</button></div></div>
       </Modal>
 
-      {/* Permanent Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal */}
       <Modal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} title="Permanently Delete" size="sm">
-        <div className="text-center py-6">
-          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
-            <Trash2 className="h-8 w-8 text-red-600" />
-          </div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">Permanently Delete</h3>
-          <p className="text-gray-600 mb-6">
-            Are you sure you want to permanently delete{' '}
-            <span className="font-semibold">{selectedRecord?.name_of_association}</span>?
-            This action cannot be undone.
-          </p>
-          <div className="flex justify-center space-x-3">
-            <button onClick={() => setShowDeleteModal(false)} className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition">Cancel</button>
-            <button onClick={handlePermanentDelete} className="px-6 py-2.5 bg-gradient-to-r from-red-600 to-red-500 text-white font-medium rounded-lg hover:from-red-700 hover:to-red-600 transition">Delete Permanently</button>
-          </div>
-        </div>
+        <div className="text-center py-6"><div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4"><Trash2 className="h-8 w-8 text-red-600" /></div><h3 className="text-xl font-semibold text-gray-900 mb-2">Permanently Delete</h3><p className="text-gray-600 mb-6">Are you sure you want to permanently delete <span className="font-semibold">{selectedRecord?.name_of_association}</span>? This action cannot be undone.</p><div className="flex justify-center space-x-3"><button onClick={() => setShowDeleteModal(false)} className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition">Cancel</button><button onClick={handlePermanentDelete} className="px-6 py-2.5 bg-gradient-to-r from-red-600 to-red-500 text-white font-medium rounded-lg hover:from-red-700 hover:to-red-600 transition">Delete Permanently</button></div></div>
       </Modal>
     </div>
   );

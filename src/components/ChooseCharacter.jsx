@@ -128,7 +128,6 @@ export default function ChooseCharacter() {
     }
   };
 
-  // Add new character (no avatar upload)
   const addCharacter = async () => {
     const trimmedName = newName.trim();
     if (!trimmedName) {
