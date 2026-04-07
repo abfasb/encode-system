@@ -977,7 +977,7 @@ const RcefAccredited = () => {
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       {/* Renewal Notification Banner */}
       {visibleExpiringRecords.length > 0 && showNotificationBanner && (
-        <div className="mb-6 bg-amber-50 border-l-4 border-amber-500 rounded-lg shadow-md overflow-hidden">
+        <div className="mb-6 bg-amber-50 rounded-lg shadow-md overflow-hidden">
           <div className="p-4">
             <div className="flex items-start justify-between">
               <div className="flex items-start space-x-3">

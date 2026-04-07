@@ -117,7 +117,6 @@ const parseAddress = (address) => {
   }
 };
 
-// ---------- Determine specific type from name (matches fullcso-farmers format) ----------
 const getTypeFromName = (name) => {
   const lower = (name || '').toLowerCase();
   if (lower.includes('cooperative')) return 'Cooperative';
@@ -126,7 +125,6 @@ const getTypeFromName = (name) => {
   return 'Association';
 };
 
-// ---------- Advanced parser for no_of_members ----------
 const parseMemberString = (memberStr) => {
   if (!memberStr) return { total: 0, male: 0, female: 0 };
 
@@ -145,7 +143,6 @@ const parseMemberString = (memberStr) => {
   return { total, male, female };
 };
 
-// ---------- Map CSO record to fullcso-farmers format ----------
 const mapCsoToFarmers = (csoRecord) => {
   const { province: parsedProvince, municipality: parsedMunicipality } = parseAddress(csoRecord.address || '');
   const { total, male, female } = parseMemberString(csoRecord.no_of_members || '');

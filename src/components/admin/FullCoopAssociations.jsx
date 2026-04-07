@@ -46,6 +46,40 @@ import { collection, getDocs, doc, setDoc, updateDoc, addDoc } from "firebase/fi
 import { db } from "../../config/firebase";
 import * as XLSX from 'xlsx';
 
+// ---------- Helper: Normalize string (trim, title case) ----------
+const normalizeString = (str) => {
+  if (!str) return '';
+  return str
+    .trim()
+    .toLowerCase()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
+// ---------- Helper: Normalize province name ----------
+const normalizeProvince = (prov) => normalizeString(prov);
+
+// ---------- Helper: Format date ----------
+const formatDate = (dateString) => {
+  if (!dateString) return 'N/A';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return dateString;
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+};
+
+// ---------- Helper: Parse intervention amount string to number ----------
+const parseAmount = (amountStr) => {
+  if (!amountStr || amountStr === "-") return 0;
+  const cleaned = amountStr.toString().replace(/[^0-9.-]/g, '');
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? 0 : num;
+};
+
 const useDebounce = (value, delay) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
   useEffect(() => {
@@ -65,15 +99,7 @@ const LoadingSpinner = ({ message = "Loading..." }) => (
   </div>
 );
 
-// Helper: parse intervention amount string to number
-const parseAmount = (amountStr) => {
-  if (!amountStr || amountStr === "-") return 0;
-  // Remove currency symbols, commas, spaces, and other non-numeric characters except decimal point
-  const cleaned = amountStr.toString().replace(/[^0-9.-]/g, '');
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? 0 : num;
-};
-
+// Memoized Table Row Component (supports both da‑encode and rcef records)
 const MemoizedTableRow = React.memo(({
   item,
   index,
@@ -81,17 +107,26 @@ const MemoizedTableRow = React.memo(({
   openDeleteModal,
   openViewModal,
   isDifferentlyAbledEmpty,
-  isRegistrationEmpty
+  isRegistrationEmpty,
+  isRcefRecord
 }) => {
   const handleEditClick = useCallback((e) => {
     e.stopPropagation();
+    if (isRcefRecord) {
+      alert("RCEF records cannot be edited here. Please use the RCEF Accredited module.");
+      return;
+    }
     openEditModal(item);
-  }, [openEditModal, item]);
+  }, [openEditModal, item, isRcefRecord]);
 
   const handleDeleteClick = useCallback((e) => {
     e.stopPropagation();
+    if (isRcefRecord) {
+      alert("RCEF records cannot be deleted here. Please use the RCEF Accredited module.");
+      return;
+    }
     openDeleteModal(item);
-  }, [openDeleteModal, item]);
+  }, [openDeleteModal, item, isRcefRecord]);
 
   const handleViewClick = useCallback((e) => {
     e.stopPropagation();
@@ -100,9 +135,25 @@ const MemoizedTableRow = React.memo(({
 
   const renderCheck = (value) => value ? "✓" : "";
 
+  // Display accreditation periods if present (for RCEF records)
+  const renderAccreditationPeriods = () => {
+    if (item.accreditationPeriods && item.accreditationPeriods.length > 0) {
+      return (
+        <div className="text-xs space-y-1">
+          {item.accreditationPeriods.map((period, idx) => (
+            <div key={idx}>
+              {formatDate(period.date_accredited)} → {formatDate(period.date_expiration)}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return <span className="text-gray-400">—</span>;
+  };
+
   return (
     <tr
-      onClick={() => openViewModal(item)}
+      onClick={handleViewClick}
       className="hover:bg-gradient-to-r hover:from-green-50 hover:to-emerald-50 transition-all duration-200 cursor-pointer"
     >
       <td className="px-4 py-3 whitespace-nowrap text-center text-sm font-bold text-gray-900 border-r border-gray-200">
@@ -112,6 +163,7 @@ const MemoizedTableRow = React.memo(({
         <div className="text-sm font-semibold text-gray-900 truncate" title={item.name || ""}>
           {item.name || ""}
         </div>
+        <div className="text-xs text-gray-500">{item.province} • {item.municipality}</div>
       </td>
       <td className="px-4 py-3 border-r border-gray-200 min-w-48">
         <div className="text-sm text-gray-900 truncate" title={item.address || ""}>
@@ -184,6 +236,12 @@ const MemoizedTableRow = React.memo(({
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 border-r border-gray-200 min-w-24">
         {item.interventionAmount || "-"}
       </td>
+
+      {/* Accreditation Periods column (new) */}
+      <td className="px-4 py-3 text-sm text-gray-900 border-r border-gray-200 min-w-48">
+        {renderAccreditationPeriods()}
+      </td>
+
       <td className="px-4 py-3 whitespace-nowrap text-center border-r border-gray-200">
         {item.status === "Active" && (
           <div className="flex items-center justify-center">
@@ -219,14 +277,8 @@ const MemoizedTableRow = React.memo(({
   );
 });
 
-const Pagination = ({
-  currentPage,
-  totalPages,
-  itemsPerPage,
-  totalItems,
-  onPageChange,
-  onItemsPerPageChange
-}) => {
+// Pagination Component (unchanged)
+const Pagination = ({ currentPage, totalPages, itemsPerPage, totalItems, onPageChange, onItemsPerPageChange }) => {
   const maxVisiblePages = 5;
   const getPageNumbers = () => {
     if (totalPages <= maxVisiblePages) return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -282,8 +334,9 @@ const Pagination = ({
   );
 };
 
+// Main Component
 export default function FullCoopAssociations() {
-  const [data, setData] = useState([]);
+  const [data, setData] = useState([]);               // grouped data (combined and deduplicated)
   const [filteredData, setFilteredData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -379,22 +432,242 @@ export default function FullCoopAssociations() {
   const uniqueRegistrationTypes = useMemo(() => [...new Set(data.map(item => item.registration_type).filter(Boolean))].sort(), [data]);
   const uniqueCommodities = useMemo(() => [...new Set(data.map(item => item.commodity).filter(Boolean))].sort(), [data]);
 
+  // ---------------------------
+  // DATA FETCHING & GROUPING
+  // ---------------------------
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      // Fetch from both collections
+      const daSnapshot = await getDocs(collection(db, "da-encode"));
+      const rcefSnapshot = await getDocs(collection(db, "rcef"));
+
+      const daRecords = [];
+      const provincesMap = new Map(); 
+
+      for (const doc of daSnapshot.docs) {
+        const docData = doc.data();
+        const provinceName = docData.province || "";
+        if (provinceName) {
+          provincesMap.set(provinceName, true);
+          if (docData.municipalities && Array.isArray(docData.municipalities)) {
+            docData.municipalities.forEach(municipality => {
+              if (municipality.associations && Array.isArray(municipality.associations)) {
+                municipality.associations.forEach((association, assocIndex) => {
+                  let status = "Inactive";
+                  if (association.status) {
+                    if (association.status.active === "P") status = "Active";
+                    else if (association.status.inactive === "P") status = "Inactive";
+                  }
+                  const members = {
+                    male: association.members?.male || "",
+                    female: association.members?.female || "",
+                    senior_citizen: association.members?.senior_citizen || "",
+                    differently_abled: association.members?.differently_abled || "",
+                    young_farmer: association.members?.young_farmer || "",
+                    ips: association.members?.ips || ""
+                  };
+                  const totalMembers = (
+                    (parseInt(association.members?.male) || 0) +
+                    (parseInt(association.members?.female) || 0) +
+                    (parseInt(association.members?.senior_citizen) || 0) +
+                    (parseInt(association.members?.differently_abled) || 0) +
+                    (parseInt(association.members?.young_farmer) || 0) +
+                    (parseInt(association.members?.ips) || 0)
+                  );
+                  daRecords.push({
+                    id: `${doc.id}_${municipality.municipality || municipality.name || "unknown"}_${assocIndex}_${Date.now()}`,
+                    firestoreId: doc.id,
+                    provinceDocId: doc.id,
+                    municipalityIndex: docData.municipalities.findIndex(m => (m.municipality || m.name) === (municipality.municipality || municipality.name)),
+                    associationIndex: assocIndex,
+                    source: "da-encode",  // mark source
+                    province: provinceName,
+                    municipality: municipality.municipality || municipality.name || "",
+                    name: association.name || "",
+                    address: association.address || "",
+                    registration_type: association.registration_type || "",
+                    president: association.president || "",
+                    contact_number: association.contact_number || "",
+                    members: members,
+                    totalMembers: totalMembers,
+                    commodity: association.commodity || "",
+                    status: status,
+                    groupCategories: association.groupCategories || {
+                      womenLed: false,
+                      menLed: false,
+                      seniorCitizensGroup: false,
+                      personsWithDisabilitiesGroup: false,
+                      youngFarmersOrganization: false,
+                      indigenousPeoplesAssociation: false,
+                    },
+                    interventionReviewed: association.interventionReviewed || false,
+                    specificIntervention: association.specificIntervention || "",
+                    interventionAmount: association.interventionAmount || "",
+                    accreditationPeriods: []   // da-encode records have no accreditation periods
+                  });
+                });
+              }
+            });
+          }
+        }
+      }
+
+      const rcefRecords = [];
+      rcefSnapshot.forEach(doc => {
+        const record = doc.data();
+        rcefRecords.push({
+          id: doc.id,
+          source: "rcef",
+          province: record.province || "",
+          municipality: record.municipality || "",
+          name: record.name || "",
+          address: record.address || "",
+          registration_type: record.type_fca || "",      // map type_fca to registration_type
+          president: record.contact_person || "",
+          contact_number: record.contact_no || "",
+          members: {
+            male: record.male_members || "",
+            female: record.female_members || "",
+            senior_citizen: "",                         // not in rcef
+            differently_abled: "",
+            young_farmer: "",
+            ips: ""
+          },
+          totalMembers: record.total_members || 0,
+          commodity: "",                                 // not in rcef
+          status: "Active",                              // default
+          groupCategories: {
+            womenLed: false,
+            menLed: false,
+            seniorCitizensGroup: false,
+            personsWithDisabilitiesGroup: false,
+            youngFarmersOrganization: false,
+            indigenousPeoplesAssociation: false,
+          },
+          interventionReviewed: false,
+          specificIntervention: "",
+          interventionAmount: "",
+          accreditationPeriods: [{
+            date_accredited: record.date_accredited,
+            date_expiration: record.date_expiration
+          }],
+          interventions: record.interventions || { seeds: false, mech: false, credit: false, extn: false }
+        });
+      });
+
+      const allRecords = [...daRecords, ...rcefRecords];
+
+      // Group by normalized name + province + municipality
+      const groups = new Map();
+      allRecords.forEach(record => {
+        const normalizedName = normalizeString(record.name);
+        const normalizedProv = normalizeProvince(record.province);
+        const normalizedMun = normalizeString(record.municipality);
+        const key = `${normalizedName}|${normalizedProv}|${normalizedMun}`;
+        if (!groups.has(key)) {
+          groups.set(key, {
+            id: key,
+            name: normalizedName,
+            province: normalizedProv,
+            municipality: normalizedMun,
+            address: record.address,
+            registration_type: record.registration_type,
+            president: record.president,
+            contact_number: record.contact_number,
+            members: { male: 0, female: 0, senior_citizen: 0, differently_abled: 0, young_farmer: 0, ips: 0 },
+            totalMembers: 0,
+            commodity: record.commodity,
+            status: "Active",
+            groupCategories: { womenLed: false, menLed: false, seniorCitizensGroup: false, personsWithDisabilitiesGroup: false, youngFarmersOrganization: false, indigenousPeoplesAssociation: false },
+            interventionReviewed: false,
+            specificIntervention: "",
+            interventionAmount: "",
+            accreditationPeriods: [],
+            interventions: { seeds: false, mech: false, credit: false, extn: false },
+            sourceRecords: []   // store original records for later reference
+          });
+        }
+        const group = groups.get(key);
+        // Aggregate numeric members
+        group.members.male += parseInt(record.members?.male) || 0;
+        group.members.female += parseInt(record.members?.female) || 0;
+        group.members.senior_citizen += parseInt(record.members?.senior_citizen) || 0;
+        group.members.differently_abled += parseInt(record.members?.differently_abled) || 0;
+        group.members.young_farmer += parseInt(record.members?.young_farmer) || 0;
+        group.members.ips += parseInt(record.members?.ips) || 0;
+        group.totalMembers = group.members.male + group.members.female + group.members.senior_citizen + group.members.differently_abled + group.members.young_farmer + group.members.ips;
+        // Merge groupCategories (OR)
+        if (record.groupCategories) {
+          group.groupCategories.womenLed = group.groupCategories.womenLed || record.groupCategories.womenLed;
+          group.groupCategories.menLed = group.groupCategories.menLed || record.groupCategories.menLed;
+          group.groupCategories.seniorCitizensGroup = group.groupCategories.seniorCitizensGroup || record.groupCategories.seniorCitizensGroup;
+          group.groupCategories.personsWithDisabilitiesGroup = group.groupCategories.personsWithDisabilitiesGroup || record.groupCategories.personsWithDisabilitiesGroup;
+          group.groupCategories.youngFarmersOrganization = group.groupCategories.youngFarmersOrganization || record.groupCategories.youngFarmersOrganization;
+          group.groupCategories.indigenousPeoplesAssociation = group.groupCategories.indigenousPeoplesAssociation || record.groupCategories.indigenousPeoplesAssociation;
+        }
+        // Merge interventions (OR)
+        if (record.interventions) {
+          group.interventions.seeds = group.interventions.seeds || record.interventions.seeds;
+          group.interventions.mech = group.interventions.mech || record.interventions.mech;
+          group.interventions.credit = group.interventions.credit || record.interventions.credit;
+          group.interventions.extn = group.interventions.extn || record.interventions.extn;
+        }
+        // Collect accreditation periods
+        if (record.accreditationPeriods && record.accreditationPeriods.length > 0) {
+          group.accreditationPeriods.push(...record.accreditationPeriods);
+        }
+        // Store original record reference
+        group.sourceRecords.push(record);
+      });
+
+      // Convert map to array and sort by name
+      const groupedArray = Array.from(groups.values()).map(group => ({
+        ...group,
+        // For groupCategories, we keep the merged object
+        // For interventions, we can set specificIntervention string from interventions
+        specificIntervention: group.interventions ? 
+          Object.entries(group.interventions).filter(([k,v]) => v).map(([k]) => k).join(', ') : "",
+        interventionAmount: "", // not applicable for grouped
+        status: group.sourceRecords.some(r => r.status === "Active") ? "Active" : "Inactive",
+        // Keep the most recent address, contact, etc. (simple: take first non-empty)
+        address: group.address || group.sourceRecords.find(r => r.address)?.address || "",
+        registration_type: group.registration_type || group.sourceRecords.find(r => r.registration_type)?.registration_type || "",
+        president: group.president || group.sourceRecords.find(r => r.president)?.president || "",
+        contact_number: group.contact_number || group.sourceRecords.find(r => r.contact_number)?.contact_number || "",
+        commodity: group.commodity || group.sourceRecords.find(r => r.commodity)?.commodity || "",
+      }));
+
+      groupedArray.sort((a, b) => a.name.localeCompare(b.name));
+
+      setData(groupedArray);
+      setFilteredData(groupedArray);
+      setCurrentPage(1);
+      // Build provincesData for municipality dropdown (from da-encode only, for editing)
+      const provincesList = [];
+      for (const doc of daSnapshot.docs) {
+        const docData = doc.data();
+        const provinceName = docData.province || "";
+        if (provinceName) {
+          provincesList.push({
+            id: doc.id,
+            name: provinceName,
+            municipalities: docData.municipalities || []
+          });
+        }
+      }
+      setProvincesData(provincesList);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      alert("Error loading data. Please try refreshing the page.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => { fetchData(); }, []);
 
-  useEffect(() => {
-    if (filters.province) {
-      const selectedProvince = provincesData.find(p => p.name === filters.province);
-      if (selectedProvince) {
-        const municipalities = selectedProvince.municipalities.map(m => m.municipality || m.name || "").filter(Boolean);
-        setAvailableMunicipalities([...new Set(municipalities)]);
-        if (filters.municipality && !municipalities.includes(filters.municipality)) handleFilterChange("municipality", "");
-      }
-    } else {
-      setAvailableMunicipalities([]);
-      handleFilterChange("municipality", "");
-    }
-  }, [filters.province, provincesData]);
-
+  // ---------- Filtering & Sorting (adapted to grouped data) ----------
   useEffect(() => {
     if (!data.length) return;
     setIsFiltering(true);
@@ -454,98 +727,7 @@ export default function FullCoopAssociations() {
     });
   }, [filters, data, sortConfig, debouncedSearchTerm]);
 
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const querySnapshot = await getDocs(collection(db, "da-encode"));
-      const allData = [];
-      const provincesList = [];
-      let index = 1;
-      const chunkSize = 100;
-      const docsArray = Array.from(querySnapshot.docs);
-      for (let i = 0; i < docsArray.length; i += chunkSize) {
-        const chunk = docsArray.slice(i, i + chunkSize);
-        chunk.forEach(doc => {
-          const docData = doc.data();
-          const provinceName = docData.province || "";
-          if (provinceName) {
-            provincesList.push({
-              id: doc.id,
-              name: provinceName,
-              municipalities: docData.municipalities || []
-            });
-            if (docData.municipalities && Array.isArray(docData.municipalities)) {
-              docData.municipalities.forEach(municipality => {
-                if (municipality.associations && Array.isArray(municipality.associations)) {
-                  municipality.associations.forEach((association, assocIndex) => {
-                    let status = "Inactive";
-                    if (association.status) {
-                      if (association.status.active === "P") status = "Active";
-                      else if (association.status.inactive === "P") status = "Inactive";
-                    }
-                    const members = {
-                      male: association.members?.male || "",
-                      female: association.members?.female || "",
-                      senior_citizen: association.members?.senior_citizen || "",
-                      differently_abled: association.members?.differently_abled || "",
-                      young_farmer: association.members?.young_farmer || "",
-                      ips: association.members?.ips || ""
-                    };
-                    const totalMembers = (
-                      (parseInt(association.members?.male) || 0) +
-                      (parseInt(association.members?.female) || 0) +
-                      (parseInt(association.members?.senior_citizen) || 0) +
-                      (parseInt(association.members?.differently_abled) || 0) +
-                      (parseInt(association.members?.young_farmer) || 0) +
-                      (parseInt(association.members?.ips) || 0)
-                    );
-                    allData.push({
-                      id: `${doc.id}_${municipality.municipality || municipality.name || "unknown"}_${assocIndex}_${Date.now()}`,
-                      firestoreId: doc.id,
-                      provinceDocId: doc.id,
-                      municipalityIndex: docData.municipalities.findIndex(m => (m.municipality || m.name) === (municipality.municipality || municipality.name)),
-                      associationIndex: assocIndex,
-                      no: index++,
-                      province: provinceName,
-                      municipality: municipality.municipality || municipality.name || "",
-                      ...association,
-                      members: members,
-                      totalMembers: totalMembers,
-                      status: status,
-                      registration_type: association.registration_type || "",
-                      createdAt: docData.createdAt?.toDate?.() || new Date(),
-                      groupCategories: association.groupCategories || {
-                        womenLed: false,
-                        menLed: false,
-                        seniorCitizensGroup: false,
-                        personsWithDisabilitiesGroup: false,
-                        youngFarmersOrganization: false,
-                        indigenousPeoplesAssociation: false,
-                      },
-                      interventionReviewed: association.interventionReviewed || false,
-                      specificIntervention: association.specificIntervention || "",
-                      interventionAmount: association.interventionAmount || ""
-                    });
-                  });
-                }
-              });
-            }
-          }
-        });
-        if (i % chunkSize === 0) await new Promise(resolve => setTimeout(resolve, 0));
-      }
-      setProvincesData(provincesList);
-      setData(allData);
-      setFilteredData(allData);
-      setCurrentPage(1);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      alert("Error loading data. Please try refreshing the page.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // ---------- Helper functions for actions (only for da-encode records) ----------
   const handleFilterChange = (filterName, value) => {
     setFilters(prev => ({ ...prev, [filterName]: value }));
   };
@@ -580,6 +762,93 @@ export default function FullCoopAssociations() {
     return sortConfig.direction === 'ascending' ? <FiChevronUp className="text-green-600" /> : <FiChevronDown className="text-green-600" />;
   };
 
+  // For editing/deleting, we need the original da-encode record details
+  // For grouped items, they may have multiple source records; we only allow editing if the item comes from da-encode (i.e., has sourceRecords with source="da-encode")
+  // We'll find the first da-encode record in sourceRecords
+  const getOriginalDaEncodeRecord = (groupedItem) => {
+    return groupedItem.sourceRecords?.find(r => r.source === "da-encode");
+  };
+
+  const openEditModal = (groupedItem) => {
+    const original = getOriginalDaEncodeRecord(groupedItem);
+    if (!original) {
+      alert("This record is from RCEF and cannot be edited here. Please use the RCEF Accredited module.");
+      return;
+    }
+    setSelectedAssociation(original);
+    setNewAssociation({
+      name: original.name || "",
+      province: original.province || "",
+      municipality: original.municipality || "",
+      address: original.address || "",
+      registration_type: original.registration_type || "",
+      president: original.president || "",
+      contact_number: original.contact_number || "",
+      members: {
+        male: original.members?.male || "",
+        female: original.members?.female || "",
+        senior_citizen: original.members?.senior_citizen || "",
+        differently_abled: original.members?.differently_abled || "",
+        young_farmer: original.members?.young_farmer || "",
+        ips: original.members?.ips || ""
+      },
+      commodity: original.commodity || "",
+      status: original.status === "Active" ? { active: "P", inactive: null } : { active: null, inactive: "P" },
+      groupCategories: original.groupCategories || {
+        womenLed: false,
+        menLed: false,
+        seniorCitizensGroup: false,
+        personsWithDisabilitiesGroup: false,
+        youngFarmersOrganization: false,
+        indigenousPeoplesAssociation: false,
+      },
+      interventionReviewed: original.interventionReviewed || false,
+      specificIntervention: original.specificIntervention || "",
+      interventionAmount: original.interventionAmount || ""
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const openDeleteModal = (groupedItem) => {
+    const original = getOriginalDaEncodeRecord(groupedItem);
+    if (!original) {
+      alert("This record is from RCEF and cannot be deleted here. Please use the RCEF Accredited module.");
+      return;
+    }
+    setSelectedAssociation(original);
+    setIsDeleteModalOpen(true);
+  };
+
+  const openViewModal = (groupedItem) => {
+    setSelectedViewAssociation(groupedItem);
+    setIsViewModalOpen(true);
+  };
+
+  const handleEditFromView = () => {
+    if (selectedViewAssociation) {
+      const original = getOriginalDaEncodeRecord(selectedViewAssociation);
+      if (original) {
+        setIsViewModalOpen(false);
+        openEditModal(selectedViewAssociation);
+      } else {
+        alert("RCEF records cannot be edited here.");
+      }
+    }
+  };
+
+  const handleDeleteFromView = () => {
+    if (selectedViewAssociation) {
+      const original = getOriginalDaEncodeRecord(selectedViewAssociation);
+      if (original) {
+        setIsViewModalOpen(false);
+        openDeleteModal(selectedViewAssociation);
+      } else {
+        alert("RCEF records cannot be deleted here.");
+      }
+    }
+  };
+
+  // ---------- Import / Export / CRUD (unchanged for da-encode) ----------
   const openAddModal = () => {
     setNewAssociation({
       name: "",
@@ -612,66 +881,6 @@ export default function FullCoopAssociations() {
       interventionAmount: ""
     });
     setIsAddModalOpen(true);
-  };
-
-  const openEditModal = (association) => {
-    setSelectedAssociation(association);
-    setNewAssociation({
-      name: association.name || "",
-      province: association.province || "",
-      municipality: association.municipality || "",
-      address: association.address || "",
-      registration_type: association.registration_type || "",
-      president: association.president || "",
-      contact_number: association.contact_number || "",
-      members: {
-        male: association.members?.male || "",
-        female: association.members?.female || "",
-        senior_citizen: association.members?.senior_citizen || "",
-        differently_abled: association.members?.differently_abled || "",
-        young_farmer: association.members?.young_farmer || "",
-        ips: association.members?.ips || ""
-      },
-      commodity: association.commodity || "",
-      status: association.status === "Active" ? { active: "P", inactive: null } : { active: null, inactive: "P" },
-      groupCategories: association.groupCategories || {
-        womenLed: false,
-        menLed: false,
-        seniorCitizensGroup: false,
-        personsWithDisabilitiesGroup: false,
-        youngFarmersOrganization: false,
-        indigenousPeoplesAssociation: false,
-      },
-      interventionReviewed: association.interventionReviewed || false,
-      specificIntervention: association.specificIntervention || "",
-      interventionAmount: association.interventionAmount || ""
-    });
-    setIsEditModalOpen(true);
-  };
-
-  const openDeleteModal = (association) => {
-    setSelectedAssociation(association);
-    setIsDeleteModalOpen(true);
-  };
-
-  const openViewModal = (association) => {
-    setSelectedViewAssociation(association);
-    setIsViewModalOpen(true);
-  };
-
-  const handleEditFromView = () => {
-    setIsViewModalOpen(false);
-    openEditModal(selectedViewAssociation);
-  };
-
-  const handleDeleteFromView = () => {
-    setIsViewModalOpen(false);
-    openDeleteModal(selectedViewAssociation);
-  };
-
-  const openImportModal = () => {
-    setIsImportModalOpen(true);
-    setImportStatus({ loading: false, message: "", success: false, error: false });
   };
 
   const handleInputChange = (e) => {
@@ -811,6 +1020,7 @@ export default function FullCoopAssociations() {
     }
   };
 
+  // ---------- Import / Export functions (unchanged) ----------
   const handleExcelUpload = (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -1011,10 +1221,10 @@ export default function FullCoopAssociations() {
       </style></head>
       <body>
         <table style="width:100%; border-collapse: collapse; margin-bottom: 10px;">
-           <tr><td colspan="16" style="text-align:center; font-weight:bold; font-size:18px;">LIST OF REGISTERED ASSOCIATIONS</td></tr>
-          <tr style="height:15px;"><td colspan="16"></td><td colspan="6" style="font-weight:bold;">LEGEND:</td></tr>
-          <tr><td colspan="2"><strong>PROVINCE</strong></td><td colspan="14">: ${displayProvince}</td><td colspan="6" class="no-data" style="text-align:center;">NO DATA</td></tr>
-          <tr><td colspan="2"><strong>MUNICIPALITY</strong></td><td colspan="14">: ${displayMunicipality}</td><td colspan="6" class="no-registration" style="text-align:center;">NO REGISTRATION</td></tr>
+           <tr><td colspan="17" style="text-align:center; font-weight:bold; font-size:18px;">LIST OF REGISTERED ASSOCIATIONS</td></tr>
+          <tr style="height:15px;"><td colspan="17"></td><td colspan="6" style="font-weight:bold;">LEGEND:</td></tr>
+          <tr><td colspan="2"><strong>PROVINCE</strong></td><td colspan="15">: ${displayProvince}</td><td colspan="6" class="no-data" style="text-align:center;">NO DATA</td></tr>
+          <tr><td colspan="2"><strong>MUNICIPALITY</strong></td><td colspan="15">: ${displayMunicipality}</td><td colspan="6" class="no-registration" style="text-align:center;">NO REGISTRATION</td></tr>
         </table>
         <br/>
         <table>
@@ -1030,12 +1240,14 @@ export default function FullCoopAssociations() {
               <th rowspan="2">Commodity</th>
               <th colspan="6">Group Categories</th>
               <th colspan="2">Year</th>
+              <th rowspan="2">Accreditation Periods</th>
               <th colspan="2">Status</th>
             </tr>
             <tr>
               <th>Male</th><th>Female</th><th>Senior Citizen</th><th>Differently-abled</th><th>Young Farmer</th><th>IPs</th>
               <th>Women-Led</th><th>Men-Led</th><th>Senior Citizens</th><th>PWD</th><th>Young Farmers</th><th>IP Association</th>
-              <th>Specific Intervention</th><th>Amount</th><th>Active</th><th>Inactive</th>
+              <th>Specific Intervention</th><th>Amount</th>
+              <th>Active</th><th>Inactive</th>
             </tr>
           </thead>
           <tbody>
@@ -1045,6 +1257,9 @@ export default function FullCoopAssociations() {
       const isRegEmpty = !item.registration_type;
       const displayMemberValue = (val) => (val === "" || val === "0" || val === 0 || !val) ? "" : val;
       const check = (val) => val ? "✓" : "";
+      const accreditationPeriodsHtml = item.accreditationPeriods && item.accreditationPeriods.length > 0
+        ? item.accreditationPeriods.map(p => `${formatDate(p.date_accredited)} → ${formatDate(p.date_expiration)}`).join('<br/>')
+        : "—";
       tableHTML += `
         <tr>
           <td style="text-align:center">${index + 1}</td>
@@ -1068,6 +1283,7 @@ export default function FullCoopAssociations() {
           <td style="text-align:center">${check(item.groupCategories?.indigenousPeoplesAssociation)}</td>
           <td>${item.specificIntervention || "-"}</td>
           <td>${item.interventionAmount || "-"}</td>
+          <td>${accreditationPeriodsHtml}</td>
           <td style="text-align:center">${item.status === "Active" ? "✓" : ""}</td>
           <td style="text-align:center">${item.status === "Inactive" ? "✓" : ""}</td>
         </tr>
@@ -1118,18 +1334,29 @@ export default function FullCoopAssociations() {
               <th>No.</th><th>Association Name</th><th>Address</th><th>Registration Type</th><th>President</th><th>Contact No.</th>
               <th>Male</th><th>Female</th><th>Senior Citizen</th><th>Differently-abled</th><th>Young Farmer</th><th>IPs</th><th>Commodity</th>
               <th>Women-Led</th><th>Men-Led</th><th>Senior Citizens</th><th>PWD</th><th>Young Farmers</th><th>IP Association</th>
-              <th>Specific Intervention</th><th>Amount</th><th>Status</th>
+              <th>Specific Intervention</th><th>Amount</th><th>Accreditation Periods</th><th>Status</th>
             </tr>
           </thead>
           <tbody>
-            ${filteredData.map((item, idx) => `
+            ${filteredData.map((item, idx) => {
+              const periods = item.accreditationPeriods && item.accreditationPeriods.length > 0
+                ? item.accreditationPeriods.map(p => `${formatDate(p.date_accredited)}→${formatDate(p.date_expiration)}`).join(', ')
+                : "—";
+              return `
               <tr>
-                <td>${idx+1}</td><td>${item.name||""}</td><td>${item.address||""}</td><td>${item.registration_type||""}</td><td>${item.president||""}</td><td>${item.contact_number||""}</td>
-                <td>${item.members?.male||""}</td><td>${item.members?.female||""}</td><td>${item.members?.senior_citizen||""}</td><td>${item.members?.differently_abled||""}</td><td>${item.members?.young_farmer||""}</td><td>${item.members?.ips||""}</td><td>${item.commodity||""}</td>
-                <td>${item.groupCategories?.womenLed ? "Yes" : ""}</td><td>${item.groupCategories?.menLed ? "Yes" : ""}</td><td>${item.groupCategories?.seniorCitizensGroup ? "Yes" : ""}</td><td>${item.groupCategories?.personsWithDisabilitiesGroup ? "Yes" : ""}</td><td>${item.groupCategories?.youngFarmersOrganization ? "Yes" : ""}</td><td>${item.groupCategories?.indigenousPeoplesAssociation ? "Yes" : ""}</td>
-                <td>${item.specificIntervention||"-"}</td><td>${item.interventionAmount||"-"}</td><td>${item.status||""}</td>
+                <td>${idx+1}</td><td>${item.name||""}</td><td>${item.address||""}</td><td>${item.registration_type||""}</td>
+                <td>${item.president||""}</td><td>${item.contact_number||""}</td>
+                <td>${item.members?.male||""}</td><td>${item.members?.female||""}</td><td>${item.members?.senior_citizen||""}</td>
+                <td>${item.members?.differently_abled||""}</td><td>${item.members?.young_farmer||""}</td><td>${item.members?.ips||""}</td>
+                <td>${item.commodity||""}</td>
+                <td>${item.groupCategories?.womenLed ? "Yes" : ""}</td><td>${item.groupCategories?.menLed ? "Yes" : ""}</td>
+                <td>${item.groupCategories?.seniorCitizensGroup ? "Yes" : ""}</td><td>${item.groupCategories?.personsWithDisabilitiesGroup ? "Yes" : ""}</td>
+                <td>${item.groupCategories?.youngFarmersOrganization ? "Yes" : ""}</td><td>${item.groupCategories?.indigenousPeoplesAssociation ? "Yes" : ""}</td>
+                <td>${item.specificIntervention||"-"}</td><td>${item.interventionAmount||"-"}</td>
+                <td>${periods}</td><td>${item.status||""}</td>
               </tr>
-            `).join('')}
+              `;
+            }).join('')}
           </tbody>
         </table>
       </body></html>
@@ -1164,13 +1391,14 @@ export default function FullCoopAssociations() {
 
   return (
     <div className="p-4 md:p-6 bg-gradient-to-br from-gray-50 to-gray-100 flex-1 overflow-auto min-h-screen">
+      {/* Header */}
       <div className="mb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-green-800 to-green-600 bg-clip-text text-transparent mb-2">
               Farmers' Cooperative And Associations (FCAs)
             </h1>
-            <p className="text-gray-600">Complete list of all agricultural associations with advanced filtering</p>
+            <p className="text-gray-600">Complete list of all agricultural associations (including RCEF accredited) with advanced filtering</p>
           </div>
           <div className="flex gap-3">
             <button onClick={() => fileInputRef.current?.click()} className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-medium hover:from-blue-700 hover:to-indigo-700 transition-all duration-300 shadow-lg hover:shadow-xl flex items-center justify-center transform hover:-translate-y-0.5">
@@ -1199,7 +1427,6 @@ export default function FullCoopAssociations() {
             <p className="text-sm text-gray-600">Filter, search, import, and export your association data</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            {/* Total Intervention Amount Display */}
             <div className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-xl px-4 py-2 border border-amber-200 flex items-center gap-2">
               <FiDollarSign className="text-amber-600 text-lg" />
               <div>
@@ -1222,7 +1449,7 @@ export default function FullCoopAssociations() {
         </div>
       </div>
 
-      {/* Filter Section (unchanged) */}
+      {/* Filter Section */}
       <div className="bg-white p-5 md:p-6 rounded-2xl shadow-lg border border-gray-200 mb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-5">
           <div>
@@ -1326,7 +1553,7 @@ export default function FullCoopAssociations() {
         </div>
 
         <div className="overflow-x-auto">
-          <table ref={tableRef} className="min-w-full divide-y divide-gray-200 text-sm" style={{ minWidth: '2800px' }}>
+          <table ref={tableRef} className="min-w-full divide-y divide-gray-200 text-sm" style={{ minWidth: '2900px' }}>
             <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
               <tr>
                 <th rowSpan="2" className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-16">No.</th>
@@ -1339,6 +1566,7 @@ export default function FullCoopAssociations() {
                 <th rowSpan="2" className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 min-w-32">Commodity</th>
                 <th colSpan="6" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">Group Categories</th>
                 <th colSpan="2" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">Year</th>
+                <th rowSpan="2" className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 min-w-40">Accreditation Periods</th>
                 <th colSpan="2" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
                 <th rowSpan="2" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider min-w-28">Actions</th>
               </tr>
@@ -1363,22 +1591,26 @@ export default function FullCoopAssociations() {
             </thead>
             <tbody>
               {filteredData.length === 0 ? (
-                <tr><td colSpan="28" className="px-6 py-12 text-center">
+                <tr><td colSpan="29" className="px-6 py-12 text-center">
                   <div className="text-gray-500 py-8"><FiSearch className="h-16 w-16 mx-auto mb-4 text-gray-300" /><p className="text-lg font-medium text-gray-700">No associations found</p><p className="text-sm text-gray-500 mt-1">Try adjusting your filters or search term</p><button onClick={clearFilters} className="mt-4 px-4 py-2 text-sm text-green-600 hover:text-green-800 font-medium">Clear all filters</button></div>
                 </td></tr>
               ) : (
-                displayedData.map((item, idx) => (
-                  <MemoizedTableRow
-                    key={item.id}
-                    item={item}
-                    index={(currentPage - 1) * itemsPerPage + idx + 1}
-                    openEditModal={openEditModal}
-                    openDeleteModal={openDeleteModal}
-                    openViewModal={openViewModal}
-                    isDifferentlyAbledEmpty={isDifferentlyAbledEmpty}
-                    isRegistrationEmpty={isRegistrationEmpty}
-                  />
-                ))
+                displayedData.map((item, idx) => {
+                  const isRcefRecord = item.sourceRecords && item.sourceRecords.some(r => r.source === "rcef");
+                  return (
+                    <MemoizedTableRow
+                      key={item.id}
+                      item={item}
+                      index={(currentPage - 1) * itemsPerPage + idx + 1}
+                      openEditModal={openEditModal}
+                      openDeleteModal={openDeleteModal}
+                      openViewModal={openViewModal}
+                      isDifferentlyAbledEmpty={isDifferentlyAbledEmpty}
+                      isRegistrationEmpty={isRegistrationEmpty}
+                      isRcefRecord={isRcefRecord}
+                    />
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -1396,9 +1628,7 @@ export default function FullCoopAssociations() {
         </div>
       </div>
 
-      {/* ==================== MODALS ==================== */}
-      {/* Municipality Selection Modal */}
-      {isMunicipalityModalOpen && (
+        {isMunicipalityModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
           <div ref={modalRef} className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl animate-fadeIn">
             <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-between">
