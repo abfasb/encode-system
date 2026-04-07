@@ -80,6 +80,39 @@ const parseAmount = (amountStr) => {
   return isNaN(num) ? 0 : num;
 };
 
+// ---------- Helper: Parse total members from no_of_members string (CSO format) ----------
+const parseTotalMembersFromString = (memberStr) => {
+  if (!memberStr) return 0;
+  const str = memberStr.toString();
+  // Try to extract total number
+  const totalMatch = str.match(/(\d+[\d,]*)\s*(?:members?|total|:)/i);
+  if (totalMatch) return parseInt(totalMatch[1].replace(/,/g, ''), 10);
+  const justNumber = str.match(/^(\d+)/);
+  if (justNumber) return parseInt(justNumber[1], 10);
+  return 0;
+};
+
+// ---------- Helper: Parse address to extract municipality ----------
+const parseMunicipalityFromAddress = (address) => {
+  if (!address) return '';
+  const parts = address.split(',').map(s => s.trim());
+  if (parts.length >= 2) {
+    // Usually municipality is the second last part
+    return parts[parts.length - 2];
+  }
+  return '';
+};
+
+// ---------- Helper: Check if a date string is expired ----------
+const isExpired = (expirationDateString) => {
+  if (!expirationDateString) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const expDate = new Date(expirationDateString);
+  expDate.setHours(0, 0, 0, 0);
+  return expDate < today;
+};
+
 const useDebounce = (value, delay) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
   useEffect(() => {
@@ -99,7 +132,7 @@ const LoadingSpinner = ({ message = "Loading..." }) => (
   </div>
 );
 
-// Memoized Table Row Component (supports both da‑encode and rcef records)
+// Memoized Table Row Component (supports da‑encode, rcef, and cso records)
 const MemoizedTableRow = React.memo(({
   item,
   index,
@@ -108,25 +141,25 @@ const MemoizedTableRow = React.memo(({
   openViewModal,
   isDifferentlyAbledEmpty,
   isRegistrationEmpty,
-  isRcefRecord
+  isReadOnly  // true for RCEF and CSO records
 }) => {
   const handleEditClick = useCallback((e) => {
     e.stopPropagation();
-    if (isRcefRecord) {
-      alert("RCEF records cannot be edited here. Please use the RCEF Accredited module.");
+    if (isReadOnly) {
+      alert(`${item.source === 'rcef' ? 'RCEF' : 'CSO'} records cannot be edited here. Please use the respective module.`);
       return;
     }
     openEditModal(item);
-  }, [openEditModal, item, isRcefRecord]);
+  }, [openEditModal, item, isReadOnly]);
 
   const handleDeleteClick = useCallback((e) => {
     e.stopPropagation();
-    if (isRcefRecord) {
-      alert("RCEF records cannot be deleted here. Please use the RCEF Accredited module.");
+    if (isReadOnly) {
+      alert(`${item.source === 'rcef' ? 'RCEF' : 'CSO'} records cannot be deleted here. Please use the respective module.`);
       return;
     }
     openDeleteModal(item);
-  }, [openDeleteModal, item, isRcefRecord]);
+  }, [openDeleteModal, item, isReadOnly]);
 
   const handleViewClick = useCallback((e) => {
     e.stopPropagation();
@@ -135,7 +168,7 @@ const MemoizedTableRow = React.memo(({
 
   const renderCheck = (value) => value ? "✓" : "";
 
-  // Display accreditation periods if present (for RCEF records)
+  // Display accreditation periods if present
   const renderAccreditationPeriods = () => {
     if (item.accreditationPeriods && item.accreditationPeriods.length > 0) {
       return (
@@ -237,7 +270,7 @@ const MemoizedTableRow = React.memo(({
         {item.interventionAmount || "-"}
       </td>
 
-      {/* Accreditation Periods column (new) */}
+      {/* Accreditation Periods column */}
       <td className="px-4 py-3 text-sm text-gray-900 border-r border-gray-200 min-w-48">
         {renderAccreditationPeriods()}
       </td>
@@ -277,7 +310,7 @@ const MemoizedTableRow = React.memo(({
   );
 });
 
-// Pagination Component (unchanged)
+// Pagination Component
 const Pagination = ({ currentPage, totalPages, itemsPerPage, totalItems, onPageChange, onItemsPerPageChange }) => {
   const maxVisiblePages = 5;
   const getPageNumbers = () => {
@@ -433,110 +466,99 @@ export default function FullCoopAssociations() {
   const uniqueCommodities = useMemo(() => [...new Set(data.map(item => item.commodity).filter(Boolean))].sort(), [data]);
 
   // ---------------------------
-  // DATA FETCHING & GROUPING
+  // DATA FETCHING & GROUPING (including CSO)
   // ---------------------------
   const fetchData = async () => {
     try {
       setLoading(true);
-      // Fetch from both collections
+      // Fetch from all three collections
       const daSnapshot = await getDocs(collection(db, "da-encode"));
       const rcefSnapshot = await getDocs(collection(db, "rcef"));
+      const csoSnapshot = await getDocs(collection(db, "cso"));
 
-      const daRecords = [];
-      const provincesMap = new Map(); 
+      const allRecords = [];
 
+      // Process da-encode records
       for (const doc of daSnapshot.docs) {
         const docData = doc.data();
         const provinceName = docData.province || "";
-        if (provinceName) {
-          provincesMap.set(provinceName, true);
-          if (docData.municipalities && Array.isArray(docData.municipalities)) {
-            docData.municipalities.forEach(municipality => {
-              if (municipality.associations && Array.isArray(municipality.associations)) {
-                municipality.associations.forEach((association, assocIndex) => {
-                  let status = "Inactive";
-                  if (association.status) {
-                    if (association.status.active === "P") status = "Active";
-                    else if (association.status.inactive === "P") status = "Inactive";
-                  }
-                  const members = {
-                    male: association.members?.male || "",
-                    female: association.members?.female || "",
-                    senior_citizen: association.members?.senior_citizen || "",
-                    differently_abled: association.members?.differently_abled || "",
-                    young_farmer: association.members?.young_farmer || "",
-                    ips: association.members?.ips || ""
-                  };
-                  const totalMembers = (
-                    (parseInt(association.members?.male) || 0) +
-                    (parseInt(association.members?.female) || 0) +
-                    (parseInt(association.members?.senior_citizen) || 0) +
-                    (parseInt(association.members?.differently_abled) || 0) +
-                    (parseInt(association.members?.young_farmer) || 0) +
-                    (parseInt(association.members?.ips) || 0)
-                  );
-                  daRecords.push({
-                    id: `${doc.id}_${municipality.municipality || municipality.name || "unknown"}_${assocIndex}_${Date.now()}`,
-                    firestoreId: doc.id,
-                    provinceDocId: doc.id,
-                    municipalityIndex: docData.municipalities.findIndex(m => (m.municipality || m.name) === (municipality.municipality || municipality.name)),
-                    associationIndex: assocIndex,
-                    source: "da-encode",  // mark source
-                    province: provinceName,
-                    municipality: municipality.municipality || municipality.name || "",
-                    name: association.name || "",
-                    address: association.address || "",
-                    registration_type: association.registration_type || "",
-                    president: association.president || "",
-                    contact_number: association.contact_number || "",
-                    members: members,
-                    totalMembers: totalMembers,
-                    commodity: association.commodity || "",
-                    status: status,
-                    groupCategories: association.groupCategories || {
-                      womenLed: false,
-                      menLed: false,
-                      seniorCitizensGroup: false,
-                      personsWithDisabilitiesGroup: false,
-                      youngFarmersOrganization: false,
-                      indigenousPeoplesAssociation: false,
-                    },
-                    interventionReviewed: association.interventionReviewed || false,
-                    specificIntervention: association.specificIntervention || "",
-                    interventionAmount: association.interventionAmount || "",
-                    accreditationPeriods: []   // da-encode records have no accreditation periods
-                  });
+        if (provinceName && docData.municipalities && Array.isArray(docData.municipalities)) {
+          docData.municipalities.forEach(municipality => {
+            if (municipality.associations && Array.isArray(municipality.associations)) {
+              municipality.associations.forEach((association, assocIndex) => {
+                let status = "Inactive";
+                if (association.status) {
+                  if (association.status.active === "P") status = "Active";
+                  else if (association.status.inactive === "P") status = "Inactive";
+                }
+                const members = {
+                  male: association.members?.male || "",
+                  female: association.members?.female || "",
+                  senior_citizen: association.members?.senior_citizen || "",
+                  differently_abled: association.members?.differently_abled || "",
+                  young_farmer: association.members?.young_farmer || "",
+                  ips: association.members?.ips || ""
+                };
+                allRecords.push({
+                  id: `${doc.id}_${municipality.municipality || municipality.name || "unknown"}_${assocIndex}_${Date.now()}`,
+                  firestoreId: doc.id,
+                  provinceDocId: doc.id,
+                  municipalityIndex: docData.municipalities.findIndex(m => (m.municipality || m.name) === (municipality.municipality || municipality.name)),
+                  associationIndex: assocIndex,
+                  source: "da-encode",
+                  province: provinceName,
+                  municipality: municipality.municipality || municipality.name || "",
+                  name: association.name || "",
+                  address: association.address || "",
+                  registration_type: association.registration_type || "",
+                  president: association.president || "",
+                  contact_number: association.contact_number || "",
+                  members: members,
+                  commodity: association.commodity || "",
+                  status: status,
+                  groupCategories: association.groupCategories || {
+                    womenLed: false,
+                    menLed: false,
+                    seniorCitizensGroup: false,
+                    personsWithDisabilitiesGroup: false,
+                    youngFarmersOrganization: false,
+                    indigenousPeoplesAssociation: false,
+                  },
+                  interventionReviewed: association.interventionReviewed || false,
+                  specificIntervention: association.specificIntervention || "",
+                  interventionAmount: association.interventionAmount || "",
+                  accreditationPeriods: [],
+                  interventions: { seeds: false, mech: false, credit: false, extn: false }
                 });
-              }
-            });
-          }
+              });
+            }
+          });
         }
       }
 
-      const rcefRecords = [];
+      // Process rcef records
       rcefSnapshot.forEach(doc => {
         const record = doc.data();
-        rcefRecords.push({
+        allRecords.push({
           id: doc.id,
           source: "rcef",
           province: record.province || "",
           municipality: record.municipality || "",
           name: record.name || "",
           address: record.address || "",
-          registration_type: record.type_fca || "",      // map type_fca to registration_type
+          registration_type: record.type_fca || "",
           president: record.contact_person || "",
           contact_number: record.contact_no || "",
           members: {
             male: record.male_members || "",
             female: record.female_members || "",
-            senior_citizen: "",                         // not in rcef
+            senior_citizen: "",
             differently_abled: "",
             young_farmer: "",
             ips: ""
           },
-          totalMembers: record.total_members || 0,
-          commodity: "",                                 // not in rcef
-          status: "Active",                              // default
+          commodity: "",
+          status: "Active",
           groupCategories: {
             womenLed: false,
             menLed: false,
@@ -556,7 +578,62 @@ export default function FullCoopAssociations() {
         });
       });
 
-      const allRecords = [...daRecords, ...rcefRecords];
+      // Process cso records (CSO Accredited)
+      csoSnapshot.forEach(doc => {
+        const record = doc.data();
+        // Extract municipality from address if not directly available
+        let municipality = record.municipality || parseMunicipalityFromAddress(record.address);
+        let province = record.province || "";
+        // If province is empty, try to extract from address
+        if (!province && record.address) {
+          const parts = record.address.split(',').map(s => s.trim());
+          if (parts.length >= 1) {
+            province = parts[parts.length - 1];
+          }
+        }
+        // Parse members from no_of_members string
+        const totalMembers = parseTotalMembersFromString(record.no_of_members);
+        // For CSO, we only have total, so we put total in male field as a fallback (but we'll handle aggregation)
+        // We'll store the parsed total in a separate field for aggregation
+        allRecords.push({
+          id: doc.id,
+          source: "cso",
+          province: province,
+          municipality: municipality,
+          name: record.name_of_association || "",
+          address: record.address || "",
+          registration_type: "CSO Accredited",
+          president: record.contact_person || "",
+          contact_number: record.contact_number || "",
+          members: {
+            male: "",   // We'll aggregate total separately
+            female: "",
+            senior_citizen: "",
+            differently_abled: "",
+            young_farmer: "",
+            ips: "",
+            cso_total_members: totalMembers  // store for aggregation
+          },
+          commodity: "",
+          status: record.status === "Active" ? "Active" : "Inactive",
+          groupCategories: {
+            womenLed: false,
+            menLed: false,
+            seniorCitizensGroup: false,
+            personsWithDisabilitiesGroup: false,
+            youngFarmersOrganization: false,
+            indigenousPeoplesAssociation: false,
+          },
+          interventionReviewed: false,
+          specificIntervention: "",
+          interventionAmount: "",
+          accreditationPeriods: [{
+            date_accredited: record.date_of_issuance,
+            date_expiration: record.date_of_expiration
+          }],
+          interventions: { seeds: false, mech: false, credit: false, extn: false }
+        });
+      });
 
       // Group by normalized name + province + municipality
       const groups = new Map();
@@ -575,7 +652,7 @@ export default function FullCoopAssociations() {
             registration_type: record.registration_type,
             president: record.president,
             contact_number: record.contact_number,
-            members: { male: 0, female: 0, senior_citizen: 0, differently_abled: 0, young_farmer: 0, ips: 0 },
+            members: { male: 0, female: 0, senior_citizen: 0, differently_abled: 0, young_farmer: 0, ips: 0, cso_total_members: 0 },
             totalMembers: 0,
             commodity: record.commodity,
             status: "Active",
@@ -585,7 +662,8 @@ export default function FullCoopAssociations() {
             interventionAmount: "",
             accreditationPeriods: [],
             interventions: { seeds: false, mech: false, credit: false, extn: false },
-            sourceRecords: []   // store original records for later reference
+            sourceRecords: [],
+            source: record.source  // primary source (first encountered)
           });
         }
         const group = groups.get(key);
@@ -596,7 +674,12 @@ export default function FullCoopAssociations() {
         group.members.differently_abled += parseInt(record.members?.differently_abled) || 0;
         group.members.young_farmer += parseInt(record.members?.young_farmer) || 0;
         group.members.ips += parseInt(record.members?.ips) || 0;
-        group.totalMembers = group.members.male + group.members.female + group.members.senior_citizen + group.members.differently_abled + group.members.young_farmer + group.members.ips;
+        // For CSO, add total members from cso_total_members to male as fallback? Actually we add to totalMembers directly
+        if (record.members?.cso_total_members) {
+          group.members.cso_total_members += record.members.cso_total_members;
+        }
+        // Compute total members: sum of all categories plus cso_total_members
+        group.totalMembers = group.members.male + group.members.female + group.members.senior_citizen + group.members.differently_abled + group.members.young_farmer + group.members.ips + group.members.cso_total_members;
         // Merge groupCategories (OR)
         if (record.groupCategories) {
           group.groupCategories.womenLed = group.groupCategories.womenLed || record.groupCategories.womenLed;
@@ -619,18 +702,17 @@ export default function FullCoopAssociations() {
         }
         // Store original record reference
         group.sourceRecords.push(record);
+        // Keep track of source priority (da-encode > rcef > cso) but not needed for display
       });
 
       // Convert map to array and sort by name
       const groupedArray = Array.from(groups.values()).map(group => ({
         ...group,
-        // For groupCategories, we keep the merged object
-        // For interventions, we can set specificIntervention string from interventions
         specificIntervention: group.interventions ? 
           Object.entries(group.interventions).filter(([k,v]) => v).map(([k]) => k).join(', ') : "",
-        interventionAmount: "", // not applicable for grouped
+        interventionAmount: "",
         status: group.sourceRecords.some(r => r.status === "Active") ? "Active" : "Inactive",
-        // Keep the most recent address, contact, etc. (simple: take first non-empty)
+        // Take first non-empty values for certain fields
         address: group.address || group.sourceRecords.find(r => r.address)?.address || "",
         registration_type: group.registration_type || group.sourceRecords.find(r => r.registration_type)?.registration_type || "",
         president: group.president || group.sourceRecords.find(r => r.president)?.president || "",
@@ -667,7 +749,7 @@ export default function FullCoopAssociations() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // ---------- Filtering & Sorting (adapted to grouped data) ----------
+  // ---------- Filtering & Sorting ----------
   useEffect(() => {
     if (!data.length) return;
     setIsFiltering(true);
@@ -763,16 +845,22 @@ export default function FullCoopAssociations() {
   };
 
   // For editing/deleting, we need the original da-encode record details
-  // For grouped items, they may have multiple source records; we only allow editing if the item comes from da-encode (i.e., has sourceRecords with source="da-encode")
-  // We'll find the first da-encode record in sourceRecords
   const getOriginalDaEncodeRecord = (groupedItem) => {
     return groupedItem.sourceRecords?.find(r => r.source === "da-encode");
   };
 
+  const isReadOnlyRecord = (groupedItem) => {
+    return groupedItem.sourceRecords?.some(r => r.source === "rcef" || r.source === "cso");
+  };
+
   const openEditModal = (groupedItem) => {
+    if (isReadOnlyRecord(groupedItem)) {
+      alert("This record is from RCEF or CSO and cannot be edited here. Please use the respective module.");
+      return;
+    }
     const original = getOriginalDaEncodeRecord(groupedItem);
     if (!original) {
-      alert("This record is from RCEF and cannot be edited here. Please use the RCEF Accredited module.");
+      alert("Original DA-Encode record not found.");
       return;
     }
     setSelectedAssociation(original);
@@ -810,9 +898,13 @@ export default function FullCoopAssociations() {
   };
 
   const openDeleteModal = (groupedItem) => {
+    if (isReadOnlyRecord(groupedItem)) {
+      alert("This record is from RCEF or CSO and cannot be deleted here. Please use the respective module.");
+      return;
+    }
     const original = getOriginalDaEncodeRecord(groupedItem);
     if (!original) {
-      alert("This record is from RCEF and cannot be deleted here. Please use the RCEF Accredited module.");
+      alert("Original DA-Encode record not found.");
       return;
     }
     setSelectedAssociation(original);
@@ -826,25 +918,23 @@ export default function FullCoopAssociations() {
 
   const handleEditFromView = () => {
     if (selectedViewAssociation) {
-      const original = getOriginalDaEncodeRecord(selectedViewAssociation);
-      if (original) {
-        setIsViewModalOpen(false);
-        openEditModal(selectedViewAssociation);
-      } else {
-        alert("RCEF records cannot be edited here.");
+      if (isReadOnlyRecord(selectedViewAssociation)) {
+        alert("This record is from RCEF or CSO and cannot be edited here.");
+        return;
       }
+      setIsViewModalOpen(false);
+      openEditModal(selectedViewAssociation);
     }
   };
 
   const handleDeleteFromView = () => {
     if (selectedViewAssociation) {
-      const original = getOriginalDaEncodeRecord(selectedViewAssociation);
-      if (original) {
-        setIsViewModalOpen(false);
-        openDeleteModal(selectedViewAssociation);
-      } else {
-        alert("RCEF records cannot be deleted here.");
+      if (isReadOnlyRecord(selectedViewAssociation)) {
+        alert("This record is from RCEF or CSO and cannot be deleted here.");
+        return;
       }
+      setIsViewModalOpen(false);
+      openDeleteModal(selectedViewAssociation);
     }
   };
 
@@ -1221,7 +1311,7 @@ export default function FullCoopAssociations() {
       </style></head>
       <body>
         <table style="width:100%; border-collapse: collapse; margin-bottom: 10px;">
-           <tr><td colspan="17" style="text-align:center; font-weight:bold; font-size:18px;">LIST OF REGISTERED ASSOCIATIONS</td></tr>
+            <tr><td colspan="17" style="text-align:center; font-weight:bold; font-size:18px;">LIST OF REGISTERED ASSOCIATIONS</td></tr>
           <tr style="height:15px;"><td colspan="17"></td><td colspan="6" style="font-weight:bold;">LEGEND:</td></tr>
           <tr><td colspan="2"><strong>PROVINCE</strong></td><td colspan="15">: ${displayProvince}</td><td colspan="6" class="no-data" style="text-align:center;">NO DATA</td></tr>
           <tr><td colspan="2"><strong>MUNICIPALITY</strong></td><td colspan="15">: ${displayMunicipality}</td><td colspan="6" class="no-registration" style="text-align:center;">NO REGISTRATION</td></tr>
@@ -1398,7 +1488,7 @@ export default function FullCoopAssociations() {
             <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-green-800 to-green-600 bg-clip-text text-transparent mb-2">
               Farmers' Cooperative And Associations (FCAs)
             </h1>
-            <p className="text-gray-600">Complete list of all agricultural associations (including RCEF accredited) with advanced filtering</p>
+            <p className="text-gray-600">Complete list of all agricultural associations (including RCEF accredited and CSO accredited) with advanced filtering</p>
           </div>
           <div className="flex gap-3">
             <button onClick={() => fileInputRef.current?.click()} className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-medium hover:from-blue-700 hover:to-indigo-700 transition-all duration-300 shadow-lg hover:shadow-xl flex items-center justify-center transform hover:-translate-y-0.5">
@@ -1596,7 +1686,7 @@ export default function FullCoopAssociations() {
                 </td></tr>
               ) : (
                 displayedData.map((item, idx) => {
-                  const isRcefRecord = item.sourceRecords && item.sourceRecords.some(r => r.source === "rcef");
+                  const isReadOnly = isReadOnlyRecord(item);
                   return (
                     <MemoizedTableRow
                       key={item.id}
@@ -1607,7 +1697,7 @@ export default function FullCoopAssociations() {
                       openViewModal={openViewModal}
                       isDifferentlyAbledEmpty={isDifferentlyAbledEmpty}
                       isRegistrationEmpty={isRegistrationEmpty}
-                      isRcefRecord={isRcefRecord}
+                      isReadOnly={isReadOnly}
                     />
                   );
                 })
@@ -1628,7 +1718,8 @@ export default function FullCoopAssociations() {
         </div>
       </div>
 
-        {isMunicipalityModalOpen && (
+      {/* Municipality Modal (Import) */}
+      {isMunicipalityModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
           <div ref={modalRef} className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl animate-fadeIn">
             <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-between">
@@ -1897,12 +1988,16 @@ export default function FullCoopAssociations() {
                 <button onClick={() => setIsViewModalOpen(false)} className="px-6 py-3.5 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-all duration-200 hover:border-gray-400">
                   Close
                 </button>
-                <button onClick={handleEditFromView} className="px-6 py-3.5 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-cyan-700 transition-all duration-200 shadow-lg hover:shadow-xl flex items-center">
-                  <FiEdit2 className="mr-2 text-lg" /> Edit
-                </button>
-                <button onClick={handleDeleteFromView} className="px-6 py-3.5 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-xl font-semibold hover:from-red-700 hover:to-pink-700 transition-all duration-200 shadow-lg hover:shadow-xl flex items-center">
-                  <FiTrash2 className="mr-2 text-lg" /> Delete
-                </button>
+                {!isReadOnlyRecord(selectedViewAssociation) && (
+                  <>
+                    <button onClick={handleEditFromView} className="px-6 py-3.5 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-cyan-700 transition-all duration-200 shadow-lg hover:shadow-xl flex items-center">
+                      <FiEdit2 className="mr-2 text-lg" /> Edit
+                    </button>
+                    <button onClick={handleDeleteFromView} className="px-6 py-3.5 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-xl font-semibold hover:from-red-700 hover:to-pink-700 transition-all duration-200 shadow-lg hover:shadow-xl flex items-center">
+                      <FiTrash2 className="mr-2 text-lg" /> Delete
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
