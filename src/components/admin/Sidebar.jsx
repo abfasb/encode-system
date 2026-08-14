@@ -246,7 +246,6 @@ export default function Sidebar({
           ))}
         </nav>
 
-        {/* Buy Me a Coffee Button */}
         <div className="px-3 pb-1 shrink-0">
           {sidebarOpen ? (
             <button
