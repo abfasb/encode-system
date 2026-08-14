@@ -9,7 +9,7 @@ import {
   FiChevronRight
 } from "react-icons/fi";
 import { useState, useEffect } from "react";
-import { Handshake } from "lucide-react";
+import { Handshake, Coffee, X } from "lucide-react";
 import Logo from "../../assets/DA.png";
 
 /**
@@ -33,7 +33,6 @@ export default function Sidebar({
     { name: "CSO Accreditation", icon: <FiBook />, key: "cso" },
     { name: "RCEF Accreditation", icon: <FiFileText />, key: "rcef-reports" },
     { name: "Audit Logs", icon: <FiUser />, key: "audit" },
-
   ],
   logo = Logo,
   appName = "Agriculture",
@@ -46,6 +45,7 @@ export default function Sidebar({
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(defaultOpen);
   const [isMobile, setIsMobile] = useState(false);
+  const [showCoffeeModal, setShowCoffeeModal] = useState(false);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -246,6 +246,29 @@ export default function Sidebar({
           ))}
         </nav>
 
+        {/* Buy Me a Coffee Button */}
+        <div className="px-3 pb-1 shrink-0">
+          {sidebarOpen ? (
+            <button
+              onClick={() => setShowCoffeeModal(true)}
+              className="w-full flex items-center gap-2 px-3 items-center py-2 rounded-lg text-amber-600 hover:bg-amber-50 transition-colors"
+            >
+              <Coffee size={16} className="text-amber-500" />
+              <span className="text-sm">Buy me a coffee</span>
+            </button>
+          ) : (
+            <div className="flex justify-center pb-1">
+              <button
+                onClick={() => setShowCoffeeModal(true)}
+                className="p-2 rounded-lg text-amber-600 hover:bg-amber-50 transition-colors"
+                title="Buy me a coffee"
+              >
+                <Coffee size={16} />
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Footer */}
         <div className={`mt-auto p-4 border-t ${theme.border} shrink-0`}>
           {sidebarOpen ? (
@@ -264,6 +287,72 @@ export default function Sidebar({
           )}
         </div>
       </aside>
+
+      {/* Buy Me a Coffee Modal */}
+      {showCoffeeModal && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          onClick={() => setShowCoffeeModal(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowCoffeeModal(false)}
+              className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label="Close modal"
+            >
+              <X size={18} />
+            </button>
+
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Buy Me a Coffee ☕</h2>
+            <p className="text-sm text-gray-600 mb-4">Support this project! You can send via GCash to:</p>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+              <p className="text-lg font-bold text-amber-700">0905 581 2027</p>
+              <p className="text-xs text-gray-500">Account Name: R**** B.</p>
+            </div>
+
+            <div className="border-t border-gray-200 pt-4">
+              <h3 className="text-sm font-medium text-gray-800 mb-3">Have feedback or inquiry?</h3>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setShowCoffeeModal(false);
+                  alert('Thank you! Your message has been sent. If you have any inquiries, please contact my FB Account.');
+                }}
+                className="space-y-2"
+              >
+                <input
+                  type="text"
+                  placeholder="Your name"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  required
+                />
+                <input
+                  type="email"
+                  placeholder="Email"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  required
+                />
+                <textarea
+                  placeholder="Message / Suggestions"
+                  rows="3"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  required
+                />
+                <button
+                  type="submit"
+                  className="w-full bg-amber-500 hover:bg-amber-600 text-white font-medium py-2 rounded-md transition-colors"
+                >
+                  Send Message
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
