@@ -3,7 +3,6 @@ import {
   FiHome,
   FiUser,
   FiBook,
-  FiMenu,
   FiCloud,
   FiFileText,
   FiChevronLeft,
@@ -68,31 +67,40 @@ export default function Sidebar({
 
   const theme = {
     green: {
-      bg: 'bg-green-600',
-      hover: 'hover:bg-green-700',
-      text: 'text-green-600',
-      lightBg: 'bg-green-50',
-      lightHover: 'hover:bg-green-100',
-      border: 'border-green-100',
-      ring: 'focus:ring-green-500'
+      bg: 'bg-emerald-600',
+      bgSolid: 'bg-emerald-600',
+      hover: 'hover:bg-emerald-700',
+      text: 'text-emerald-700',
+      textSoft: 'text-emerald-600',
+      lightBg: 'bg-emerald-50',
+      lightHover: 'hover:bg-emerald-50',
+      border: 'border-slate-200',
+      ring: 'focus:ring-emerald-500',
+      glow: 'shadow-emerald-600/20'
     },
     blue: {
       bg: 'bg-blue-600',
+      bgSolid: 'bg-blue-600',
       hover: 'hover:bg-blue-700',
-      text: 'text-blue-600',
+      text: 'text-blue-700',
+      textSoft: 'text-blue-600',
       lightBg: 'bg-blue-50',
-      lightHover: 'hover:bg-blue-100',
-      border: 'border-blue-100',
-      ring: 'focus:ring-blue-500'
+      lightHover: 'hover:bg-blue-50',
+      border: 'border-slate-200',
+      ring: 'focus:ring-blue-500',
+      glow: 'shadow-blue-600/20'
     }
   }[primaryColor] || {
-    bg: 'bg-green-600',
-    hover: 'hover:bg-green-700',
-    text: 'text-green-600',
-    lightBg: 'bg-green-50',
-    lightHover: 'hover:bg-green-100',
-    border: 'border-green-100',
-    ring: 'focus:ring-green-500'
+    bg: 'bg-emerald-600',
+    bgSolid: 'bg-emerald-600',
+    hover: 'hover:bg-emerald-700',
+    text: 'text-emerald-700',
+    textSoft: 'text-emerald-600',
+    lightBg: 'bg-emerald-50',
+    lightHover: 'hover:bg-emerald-50',
+    border: 'border-slate-200',
+    ring: 'focus:ring-emerald-500',
+    glow: 'shadow-emerald-600/20'
   };
 
   return (
@@ -100,7 +108,7 @@ export default function Sidebar({
       {/* Mobile overlay */}
       {isMobile && sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity"
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-[2px] z-40 transition-opacity duration-200"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -108,56 +116,88 @@ export default function Sidebar({
       <aside
         className={`
           fixed md:relative top-0 left-0 z-50
-          bg-white/80 backdrop-blur-md
+          bg-white
           border-r ${theme.border}
-          shadow-lg
-          transition-all duration-300 ease-in-out
+          transition-[width,transform] duration-300 ease-in-out
           flex flex-col h-screen
-          ${sidebarOpen ? 'w-72' : 'w-20'}
+          ${sidebarOpen ? 'w-72' : 'w-[76px]'}
           ${isMobile && !sidebarOpen ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}
         `}
         aria-label="Sidebar navigation"
       >
+        {/* Brand / header */}
         <div
           className={`
-            flex items-center px-4 h-20
+            flex items-center h-[72px] shrink-0 px-4
             border-b ${theme.border}
             ${sidebarOpen ? 'justify-between' : 'justify-center'}
           `}
         >
-          {sidebarOpen && (
-            <div className="flex items-center gap-3">
+          {sidebarOpen ? (
+            <div className="flex items-center gap-3 min-w-0">
               <img
                 src={logo}
                 alt={`${appName} logo`}
-                className="w-10 h-10 rounded-full object-cover ring-2 ring-white shadow-sm"
+                className="w-9 h-9 rounded-lg object-cover ring-1 ring-slate-200 shrink-0"
               />
-              <div>
-                <h1 className={`text-lg font-bold ${theme.text}`}>{appName}</h1>
-                <p className="text-[10px] text-gray-400 tracking-wider uppercase">
+              <div className="min-w-0">
+                <h1 className="text-[15px] font-semibold text-slate-900 leading-tight truncate">
+                  {appName}
+                </h1>
+                <p className="text-[11px] text-slate-400 font-medium tracking-wide truncate">
                   {appSubtitle}
                 </p>
               </div>
             </div>
+          ) : (
+            <img
+              src={logo}
+              alt={`${appName} logo`}
+              className="w-9 h-9 rounded-lg object-cover ring-1 ring-slate-200"
+            />
           )}
 
-          <button
-            onClick={toggleSidebar}
-            className={`
-              p-2 rounded-lg ${theme.lightBg} ${theme.lightHover}
-              transition-colors focus:outline-none ${theme.ring} focus:ring-2 focus:ring-offset-2
-            `}
-            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-          >
-            {sidebarOpen ? (
-              <FiChevronLeft className={theme.text} size={18} />
-            ) : (
-              <FiChevronRight className={theme.text} size={18} />
-            )}
-          </button>
+          {sidebarOpen && (
+            <button
+              onClick={toggleSidebar}
+              className={`
+                shrink-0 p-1.5 rounded-md text-slate-400
+                hover:text-slate-600 hover:bg-slate-100
+                transition-colors duration-150
+                focus:outline-none focus-visible:ring-2 ${theme.ring} focus-visible:ring-offset-1
+              `}
+              aria-label="Collapse sidebar"
+            >
+              <FiChevronLeft size={16} />
+            </button>
+          )}
         </div>
 
-        <nav className="flex-1 mt-8 px-3 space-y-1.5 overflow-y-auto">
+        {/* Collapsed-state toggle, shown beneath brand to avoid crowding the logo */}
+        {!sidebarOpen && (
+          <div className="flex justify-center pt-3 pb-1">
+            <button
+              onClick={toggleSidebar}
+              className={`
+                p-1.5 rounded-md text-slate-400
+                hover:text-slate-600 hover:bg-slate-100
+                transition-colors duration-150
+                focus:outline-none focus-visible:ring-2 ${theme.ring} focus-visible:ring-offset-1
+              `}
+              aria-label="Expand sidebar"
+            >
+              <FiChevronRight size={16} />
+            </button>
+          </div>
+        )}
+
+        {/* Nav */}
+        <nav className="flex-1 mt-2 px-3 space-y-0.5 overflow-y-auto overflow-x-hidden">
+          {sidebarOpen && (
+            <p className="px-3 pt-3 pb-2 text-[10px] font-semibold text-slate-400 tracking-wider uppercase">
+              Menu
+            </p>
+          )}
           {links.map((link) => (
             <NavLink
               key={link.key}
@@ -165,34 +205,35 @@ export default function Sidebar({
               onClick={handleLinkClick}
               className={({ isActive }) =>
                 `
-                group relative flex items-center gap-3 px-4 py-3 rounded-xl
-                transition-all duration-200
+                group relative flex items-center gap-3 px-3 py-2.5 rounded-lg
+                text-[13.5px] font-medium
+                transition-colors duration-150
                 ${isActive
-                  ? `${theme.bg} text-white shadow-md`
-                  : `text-gray-600 ${theme.lightHover}`
+                  ? `${theme.bg} text-white shadow-sm ${theme.glow}`
+                  : `text-slate-600 hover:text-slate-900 hover:bg-slate-100`
                 }
-                ${!sidebarOpen && 'justify-center'}
+                ${!sidebarOpen && 'justify-center px-0 py-3'}
                 `
               }
             >
               {({ isActive }) => (
                 <>
-                  <span className={`text-lg ${isActive ? 'text-white' : theme.text}`}>
+                  <span className={`shrink-0 text-[17px] leading-none ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'}`}>
                     {link.icon}
                   </span>
 
                   {sidebarOpen && (
-                    <span className="text-sm font-medium whitespace-nowrap">
+                    <span className="truncate">
                       {link.name}
                     </span>
                   )}
 
                   {!sidebarOpen && (
                     <span className="
-                      absolute left-full ml-2 px-2 py-1
-                      bg-gray-800 text-white text-xs rounded
-                      opacity-0 group-hover:opacity-100
-                      transition-opacity duration-150
+                      absolute left-full ml-3 px-2.5 py-1.5
+                      bg-slate-900 text-white text-xs font-medium rounded-md
+                      opacity-0 translate-x-[-4px] group-hover:opacity-100 group-hover:translate-x-0
+                      transition-all duration-150
                       pointer-events-none whitespace-nowrap
                       z-[60] shadow-lg
                     ">
@@ -205,16 +246,23 @@ export default function Sidebar({
           ))}
         </nav>
 
-        {sidebarOpen && (
-          <div className={`mt-auto p-5 border-t ${theme.border} text-center`}>
-            <p className={`text-xs font-semibold ${theme.text} tracking-wider`}>
-              {footerText}
-            </p>
-            <p className="text-[10px] text-gray-400 mt-0.5">
-              {footerVersion}
-            </p>
-          </div>
-        )}
+        {/* Footer */}
+        <div className={`mt-auto p-4 border-t ${theme.border} shrink-0`}>
+          {sidebarOpen ? (
+            <div className={`rounded-lg ${theme.lightBg} px-3 py-3 text-center`}>
+              <p className={`text-[11px] font-semibold ${theme.text} tracking-wide`}>
+                {footerText}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                {footerVersion}
+              </p>
+            </div>
+          ) : (
+            <div className="flex justify-center">
+              <span className={`w-2 h-2 rounded-full ${theme.bgSolid}`} title={footerVersion} />
+            </div>
+          )}
+        </div>
       </aside>
     </>
   );

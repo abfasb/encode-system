@@ -27,27 +27,98 @@ import {
   Cell,
 } from "recharts";
 
-// Predefined color palette for province bars
+// ======================================================================
+// DESIGN SYSTEM — "Civic Registry" (matches the Accredited CSO registry)
+// Paper/vellum ground, oxblood + brass accents, Fraunces for structure,
+// IBM Plex Mono for every piece of record data (numbers, codes, dates).
+// ======================================================================
+
+const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,450;9..144,550;9..144,650;9..144,700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');`;
+
+const ds = {
+  page: "bg-[#F5F1E6] text-[#2A241C]",
+  cardBase: "bg-[#FFFDF7] border border-[#DED2B4] rounded-lg shadow-[0_1px_2px_rgba(42,36,28,0.05)]",
+  eyebrow: "font-['IBM_Plex_Mono'] text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8B7F63]",
+  label: "block font-['IBM_Plex_Mono'] text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8B7F63]",
+  mono: "font-['IBM_Plex_Mono']",
+  display: "font-['Fraunces']",
+  btnSecondary:
+    "inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-[#D8CDAE] text-[#2A241C] text-sm font-semibold rounded-md hover:bg-[#F1EADA] active:bg-[#E9E1CC] transition-colors duration-150",
+};
+
+// Coordinated palette for province bars — muted, registry-appropriate hues
 const PROVINCE_COLORS = [
-  "#1E3A8A", // Dark Blue
-  "#0D9488", // Teal
-  "#059669", // Emerald
-  "#D97706", // Amber
-  "#DC2626", // Red
-  "#7C3AED", // Purple
-  "#EC489A", // Pink
-  "#14B8A6", // Turquoise
-  "#F97316", // Orange
-  "#6366F1", // Indigo
+  "#7C2E2E", // Oxblood
+  "#9A6B1F", // Brass
+  "#3F6B4C", // Forest
+  "#4A5F73", // Slate
+  "#6B4A73", // Plum
+  "#78614A", // Umber
+  "#2F6B66", // Teal
+  "#8A5A3C", // Rust
+  "#5B6B3F", // Olive
+  "#4A5A8A", // Indigo
 ];
+
+const regTypeColors = ["#3F6B4C", "#4A5F73", "#9A6B1F"]; // CDA, SEC, DOLE
+
+const STATUS_COLORS = { Active: "#3F6B4C", Inactive: "#7C2E2E" };
+
+const STAMP_STYLES = {
+  Active: "text-[#3F6B4C] border-[#3F6B4C]/50 bg-[#3F6B4C]/[0.07]",
+  Inactive: "text-[#7C2E2E] border-[#7C2E2E]/50 bg-[#7C2E2E]/[0.07]",
+};
+
+const StatusStamp = ({ status }) => (
+  <span
+    className={`inline-flex items-center px-2.5 py-1 rounded-[3px] border-2 font-['IBM_Plex_Mono'] text-[10px] font-bold uppercase tracking-[0.12em] -rotate-1 ${
+      STAMP_STYLES[status] || "text-[#5B5340] border-[#5B5340]/50 bg-[#5B5340]/[0.07]"
+    }`}
+  >
+    {status || "Unknown"}
+  </span>
+);
+
+const REG_TYPE_STYLES = {
+  CDA: "text-[#3F6B4C] border-[#3F6B4C]/30 bg-[#3F6B4C]/10",
+  SEC: "text-[#4A5F73] border-[#4A5F73]/30 bg-[#4A5F73]/10",
+  DOLE: "text-[#9A6B1F] border-[#9A6B1F]/30 bg-[#9A6B1F]/10",
+};
+
+const RegTypeTag = ({ type }) => {
+  const key = type?.toUpperCase();
+  return (
+    <span
+      className={`inline-flex px-2 py-0.5 rounded border font-['IBM_Plex_Mono'] text-[10px] font-semibold uppercase tracking-wider ${
+        REG_TYPE_STYLES[key] || "text-[#5B5340] border-[#5B5340]/30 bg-[#5B5340]/10"
+      }`}
+    >
+      {type || "—"}
+    </span>
+  );
+};
+
+// Stat card used across the top row — index tab styled like a ledger seal
+const StatCard = ({ label, value, icon: Icon, tint }) => (
+  <div className={`${ds.cardBase} p-4 relative overflow-hidden`}>
+    <div className={`absolute top-0 right-0 w-16 h-16 rounded-bl-full`} style={{ backgroundColor: `${tint}14` }} />
+    <div className="flex items-start justify-between relative">
+      <div className="min-w-0">
+        <p className={`${ds.eyebrow} truncate`}>{label}</p>
+        <p className={`text-xl md:text-2xl font-bold mt-1.5 text-[#2A241C] ${ds.mono}`}>{value}</p>
+      </div>
+      <Icon className="h-6 w-6 flex-shrink-0" style={{ color: `${tint}99` }} strokeWidth={1.75} />
+    </div>
+  </div>
+);
 
 const LoadingSpinner = ({ message = "Loading..." }) => (
   <div className="flex flex-col items-center justify-center p-8">
     <div className="relative">
-      <div className="w-16 h-16 border-4 border-green-200 rounded-full"></div>
-      <div className="absolute top-0 left-0 w-16 h-16 border-4 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+      <div className="w-14 h-14 border-4 border-[#DED2B4] rounded-full"></div>
+      <div className="absolute top-0 left-0 w-14 h-14 border-4 border-[#7C2E2E] border-t-transparent rounded-full animate-spin"></div>
     </div>
-    <p className="mt-4 text-gray-600">{message}</p>
+    <p className={`mt-4 text-sm text-[#8B7F63] ${ds.mono}`}>{message}</p>
   </div>
 );
 
@@ -61,13 +132,13 @@ const Modal = ({ isOpen, onClose, title, children, size = "lg" }) => {
     xl: "max-w-6xl",
   };
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto bg-black bg-opacity-50">
-      <div className={`relative bg-white rounded-2xl shadow-2xl w-full mx-4 ${sizeClasses[size]}`}>
-        <div className="sticky top-0 bg-white rounded-t-2xl px-6 py-4 border-b border-gray-200 z-10">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto bg-[#1C1710]/60 backdrop-blur-[2px] p-4">
+      <div className={`relative bg-[#FFFDF7] rounded-lg shadow-2xl w-full ${sizeClasses[size]} border border-[#DED2B4]`}>
+        <div className="sticky top-0 bg-[#FFFDF7] rounded-t-lg px-6 py-4 border-b border-[#DED2B4] z-10">
           <div className="flex items-center justify-between">
-            <h3 className="text-2xl font-bold text-gray-900">{title}</h3>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-500 transition-colors p-1">
-              <FiX className="h-6 w-6" />
+            <h3 className={`text-xl sm:text-2xl font-semibold text-[#2A241C] ${ds.display}`}>{title}</h3>
+            <button onClick={onClose} className="text-[#8B7F63] hover:text-[#2A241C] hover:bg-[#F1EADA] transition-colors p-1.5 rounded-md">
+              <FiX className="h-5 w-5" />
             </button>
           </div>
         </div>
@@ -221,8 +292,6 @@ export default function Dashboard() {
       .sort((a, b) => b.value - a.value);
   }, [data]);
 
-  const regTypeColors = ["#10B981", "#3B82F6", "#F59E0B"];
-
   // Province data for the third row (top 10 provinces with counts)
   const provinceData = useMemo(() => {
     const provinceCounts = data.reduce((acc, item) => {
@@ -271,12 +340,12 @@ export default function Dashboard() {
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white shadow-lg rounded-lg p-3 border border-gray-200">
-          <p className="font-semibold text-gray-800">{label}</p>
-          <p className="text-green-600">
+        <div className={`bg-[#FFFDF7] shadow-lg rounded-lg p-3 border border-[#DED2B4]`}>
+          <p className={`font-semibold text-[#2A241C] ${ds.display}`}>{label}</p>
+          <p className={`text-[#7C2E2E] text-sm ${ds.mono}`}>
             Associations: <span className="font-bold">{payload[0].value}</span>
           </p>
-          <p className="text-xs text-gray-500 mt-1">Click to view details</p>
+          <p className="text-[11px] text-[#8B7F63] mt-1">Click to view details</p>
         </div>
       );
     }
@@ -285,182 +354,82 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="p-6 bg-gradient-to-br from-gray-50 to-gray-100 flex-1 overflow-auto min-h-screen flex items-center justify-center">
+      <div className={`p-6 ${ds.page} flex-1 overflow-auto min-h-screen flex items-center justify-center`}>
+        <style>{`${FONT_IMPORT}`}</style>
         <LoadingSpinner message="Loading dashboard data..." />
       </div>
     );
   }
 
   return (
-    <div className="p-4 md:p-6 bg-gradient-to-br from-gray-50 to-gray-100 flex-1 overflow-auto min-h-screen">
+    <div className={`p-4 md:p-8 ${ds.page} flex-1 overflow-auto min-h-screen`}>
+      <style>{`
+        ${FONT_IMPORT}
+        ::selection { background: rgba(124,46,46,0.18); }
+      `}</style>
+
       {/* Header */}
       <div className="mb-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5 pb-6 border-b-2 border-[#2A241C]/10">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-green-800 to-green-600 bg-clip-text text-transparent mb-2">
-              MIMAROPA FCAs Registration
+            <p className={`${ds.eyebrow} mb-2`}>MIMAROPA Region · Department of Agriculture</p>
+            <h1 className={`text-3xl md:text-[2.5rem] font-bold text-[#2A241C] ${ds.display} leading-tight`}>
+              FCA Registration Analytics
             </h1>
-            <p className="text-gray-600">Enterprise‑level analytics and visualizations</p>
+            <p className="text-[#6B6350] mt-2 text-sm">Enterprise-level statistics and visualizations across the region</p>
           </div>
-          <div className="flex gap-3">
-            <button
-              onClick={fetchData}
-              className="px-4 py-3 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-xl font-medium hover:from-gray-700 hover:to-gray-800 transition-all duration-300 shadow-lg hover:shadow-xl flex items-center justify-center transform hover:-translate-y-0.5"
-              title="Refresh Data"
-            >
-              <FiRefreshCw className="text-lg" />
+          <div className="flex gap-2.5">
+            <button onClick={fetchData} className={ds.btnSecondary} title="Refresh Data">
+              <FiRefreshCw className="text-base" />
+              Refresh
             </button>
           </div>
         </div>
       </div>
 
       {/* Analytics Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-8 gap-4 mb-8">
-        {/* ... (same cards as before) ... */}
-        <div className="group bg-gradient-to-br from-white to-green-50 p-5 rounded-2xl shadow-lg border border-green-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-gray-600 mb-1">Total Associations</p>
-              <h3 className="text-2xl font-bold text-gray-800">
-                {analytics?.totalAssociations || 0}
-              </h3>
-            </div>
-            <div className="bg-green-100 p-3 rounded-xl group-hover:bg-green-200 transition-colors">
-              <FiUsers className="text-xl text-green-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="group bg-gradient-to-br from-white to-blue-50 p-5 rounded-2xl shadow-lg border border-blue-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-gray-600 mb-1">Total Members</p>
-              <h3 className="text-2xl font-bold text-gray-800">
-                {analytics?.totalMembers?.toLocaleString() || 0}
-              </h3>
-            </div>
-            <div className="bg-blue-100 p-3 rounded-xl group-hover:bg-blue-200 transition-colors">
-              <FiUsers className="text-xl text-blue-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="group bg-gradient-to-br from-white to-emerald-50 p-5 rounded-2xl shadow-lg border border-emerald-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-gray-600 mb-1">Active</p>
-              <h3 className="text-2xl font-bold text-gray-800">
-                {analytics?.activeAssociations || 0}
-              </h3>
-            </div>
-            <div className="bg-emerald-100 p-3 rounded-xl group-hover:bg-emerald-200 transition-colors">
-              <FiCheckCircle className="text-xl text-emerald-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="group bg-gradient-to-br from-white to-purple-50 p-5 rounded-2xl shadow-lg border border-purple-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-gray-600 mb-1">PWD Members</p>
-              <h3 className="text-2xl font-bold text-gray-800">
-                {analytics?.totalDifferentlyAbled?.toLocaleString() || 0}
-              </h3>
-            </div>
-            <div className="bg-purple-100 p-3 rounded-xl group-hover:bg-purple-200 transition-colors">
-              <FiAlertCircle className="text-xl text-purple-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="group bg-gradient-to-br from-white to-pink-50 p-5 rounded-2xl shadow-lg border border-pink-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-gray-600 mb-1">Young Farmers</p>
-              <h3 className="text-2xl font-bold text-gray-800">
-                {analytics?.youngFarmersTotal?.toLocaleString() || 0}
-              </h3>
-            </div>
-            <div className="bg-pink-100 p-3 rounded-xl group-hover:bg-pink-200 transition-colors">
-              <FiUser className="text-xl text-pink-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="group bg-gradient-to-br from-white to-indigo-50 p-5 rounded-2xl shadow-lg border border-indigo-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-gray-600 mb-1">IPs</p>
-              <h3 className="text-2xl font-bold text-gray-800">
-                {analytics?.ipsTotal?.toLocaleString() || 0}
-              </h3>
-            </div>
-            <div className="bg-indigo-100 p-3 rounded-xl group-hover:bg-indigo-200 transition-colors">
-              <FiUsers className="text-xl text-indigo-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="group bg-gradient-to-br from-white to-orange-50 p-5 rounded-2xl shadow-lg border border-orange-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-gray-600 mb-1">Senior Citizens</p>
-              <h3 className="text-2xl font-bold text-gray-800">
-                {analytics?.seniorCitizensTotal?.toLocaleString() || 0}
-              </h3>
-            </div>
-            <div className="bg-orange-100 p-3 rounded-xl group-hover:bg-orange-200 transition-colors">
-              <FiUser className="text-xl text-orange-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="group bg-gradient-to-br from-white to-cyan-50 p-5 rounded-2xl shadow-lg border border-cyan-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-gray-600 mb-1">Municipalities</p>
-              <h3 className="text-2xl font-bold text-gray-800">
-                {analytics?.municipalitiesCount || 0}
-              </h3>
-            </div>
-            <div className="bg-cyan-100 p-3 rounded-xl group-hover:bg-cyan-200 transition-colors">
-              <FiBarChart2 className="text-xl text-cyan-600" />
-            </div>
-          </div>
-        </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-8">
+        <StatCard label="Total Associations" value={analytics?.totalAssociations || 0} icon={FiUsers} tint="#7C2E2E" />
+        <StatCard label="Total Members" value={(analytics?.totalMembers || 0).toLocaleString()} icon={FiUsers} tint="#4A5F73" />
+        <StatCard label="Active" value={analytics?.activeAssociations || 0} icon={FiCheckCircle} tint="#3F6B4C" />
+        <StatCard label="PWD Members" value={(analytics?.totalDifferentlyAbled || 0).toLocaleString()} icon={FiAlertCircle} tint="#6B4A73" />
+        <StatCard label="Young Farmers" value={(analytics?.youngFarmersTotal || 0).toLocaleString()} icon={FiUser} tint="#8A5A3C" />
+        <StatCard label="IPs" value={(analytics?.ipsTotal || 0).toLocaleString()} icon={FiUsers} tint="#4A5A8A" />
+        <StatCard label="Senior Citizens" value={(analytics?.seniorCitizensTotal || 0).toLocaleString()} icon={FiUser} tint="#9A6B1F" />
+        <StatCard label="Municipalities" value={analytics?.municipalitiesCount || 0} icon={FiBarChart2} tint="#2F6B66" />
       </div>
 
       {/* Row 1 & 2: Group Categories & Status */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 hover:shadow-xl transition-all duration-300">
-          <div className="flex items-center justify-between mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+        <div className={`${ds.cardBase} p-6`}>
+          <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#EAE2CB]">
             <div>
-              <h3 className="text-lg font-bold text-gray-800">Group Category Distribution</h3>
-              <p className="text-sm text-gray-500">Number of associations by type</p>
+              <h3 className={`text-base font-bold text-[#2A241C] ${ds.display}`}>Group Category Distribution</h3>
+              <p className="text-xs text-[#8B7F63] mt-0.5">Number of associations by type</p>
             </div>
-            <div className="bg-green-100 p-2 rounded-xl">
-              <FiBarChart2 className="text-green-600" />
+            <div className="bg-[#3F6B4C]/10 p-2 rounded-lg">
+              <FiBarChart2 className="text-[#3F6B4C]" />
             </div>
           </div>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={groupCategoryCounts} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} tick={{ fontSize: 12 }} />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="value" fill="#10B981" />
+            <BarChart data={groupCategoryCounts} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#EAE2CB" />
+              <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} tick={{ fontSize: 11, fill: "#8B7F63", fontFamily: "IBM Plex Mono" }} />
+              <YAxis tick={{ fontSize: 11, fill: "#8B7F63", fontFamily: "IBM Plex Mono" }} />
+              <Tooltip content={<CustomTooltip />} />
+              <Bar dataKey="value" fill="#3F6B4C" radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 hover:shadow-xl transition-all duration-300">
-          <div className="flex items-center justify-between mb-6">
+        <div className={`${ds.cardBase} p-6`}>
+          <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#EAE2CB]">
             <div>
-              <h3 className="text-lg font-bold text-gray-800">Status Overview</h3>
-              <p className="text-sm text-gray-500">Active vs Inactive associations</p>
+              <h3 className={`text-base font-bold text-[#2A241C] ${ds.display}`}>Status Overview</h3>
+              <p className="text-xs text-[#8B7F63] mt-0.5">Active vs Inactive associations</p>
             </div>
-            <div className="bg-blue-100 p-2 rounded-xl">
-              <FiPieChart className="text-blue-600" />
+            <div className="bg-[#4A5F73]/10 p-2 rounded-lg">
+              <FiPieChart className="text-[#4A5F73]" />
             </div>
           </div>
           <ResponsiveContainer width="100%" height={300}>
@@ -471,40 +440,55 @@ export default function Dashboard() {
                 cy="50%"
                 labelLine={false}
                 outerRadius={100}
-                fill="#8884d8"
                 dataKey="value"
                 label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
               >
                 {statusData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.name === "Active" ? "#10B981" : "#EF4444"} />
+                  <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.name] || "#8B7F63"} />
                 ))}
               </Pie>
-              <Tooltip />
+              <Tooltip
+                contentStyle={{
+                  background: "#FFFDF7",
+                  border: "1px solid #DED2B4",
+                  borderRadius: "8px",
+                  fontFamily: "IBM Plex Mono",
+                  fontSize: "12px",
+                }}
+              />
             </PieChart>
           </ResponsiveContainer>
         </div>
       </div>
 
       {/* Row 2: Registration Type */}
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 mb-8 hover:shadow-xl transition-all duration-300">
-        <div className="flex items-center justify-between mb-6">
+      <div className={`${ds.cardBase} p-6 mb-6`}>
+        <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#EAE2CB]">
           <div>
-            <h3 className="text-lg font-bold text-gray-800">MIMAROPA Registration Type</h3>
-            <p className="text-sm text-gray-500">Number of associations by registration type (CDA, SEC, DOLE)</p>
+            <h3 className={`text-base font-bold text-[#2A241C] ${ds.display}`}>MIMAROPA Registration Type</h3>
+            <p className="text-xs text-[#8B7F63] mt-0.5">Number of associations by registration type (CDA, SEC, DOLE)</p>
           </div>
-          <div className="bg-indigo-100 p-2 rounded-xl">
-            <FiFileText className="text-indigo-600" />
+          <div className="bg-[#9A6B1F]/10 p-2 rounded-lg">
+            <FiFileText className="text-[#9A6B1F]" />
           </div>
         </div>
         {registrationTypeData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={400}>
-            <BarChart data={registrationTypeData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="value" fill="#3B82F6">
+          <ResponsiveContainer width="100%" height={380}>
+            <BarChart data={registrationTypeData} margin={{ top: 20, right: 20, left: 10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#EAE2CB" />
+              <XAxis dataKey="name" tick={{ fontSize: 12, fill: "#8B7F63", fontFamily: "IBM Plex Mono" }} />
+              <YAxis tick={{ fontSize: 11, fill: "#8B7F63", fontFamily: "IBM Plex Mono" }} />
+              <Tooltip
+                contentStyle={{
+                  background: "#FFFDF7",
+                  border: "1px solid #DED2B4",
+                  borderRadius: "8px",
+                  fontFamily: "IBM Plex Mono",
+                  fontSize: "12px",
+                }}
+              />
+              <Legend wrapperStyle={{ fontSize: "12px", fontFamily: "IBM Plex Mono" }} />
+              <Bar dataKey="value" radius={[3, 3, 0, 0]}>
                 {registrationTypeData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={regTypeColors[index % regTypeColors.length]} />
                 ))}
@@ -512,44 +496,42 @@ export default function Dashboard() {
             </BarChart>
           </ResponsiveContainer>
         ) : (
-          <div className="text-center py-12 text-gray-500">No registration type data available</div>
+          <div className={`text-center py-12 text-[#8B7F63] text-sm ${ds.mono}`}>No registration type data available</div>
         )}
       </div>
 
       {/* Third Row: FCAs by Province (clickable bars) */}
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 hover:shadow-xl transition-all duration-300">
-        <div className="flex items-center justify-between mb-6">
+      <div className={`${ds.cardBase} p-6`}>
+        <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#EAE2CB]">
           <div>
-            <h3 className="text-lg font-bold text-gray-800">FCAs by Province</h3>
-            <p className="text-sm text-gray-500">Click on any bar to see detailed associations</p>
+            <h3 className={`text-base font-bold text-[#2A241C] ${ds.display}`}>FCAs by Province</h3>
+            <p className="text-xs text-[#8B7F63] mt-0.5">Click on any bar to see detailed associations</p>
           </div>
-          <div className="bg-purple-100 p-2 rounded-xl">
-            <FiBarChart2 className="text-purple-600" />
+          <div className="bg-[#6B4A73]/10 p-2 rounded-lg">
+            <FiBarChart2 className="text-[#6B4A73]" />
           </div>
         </div>
         {provinceData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={400}>
-            <BarChart data={provinceData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="province" angle={-45} textAnchor="end" height={100} tick={{ fontSize: 12 }} />
-              <YAxis />
+          <ResponsiveContainer width="100%" height={380}>
+            <BarChart data={provinceData} margin={{ top: 20, right: 20, left: 10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#EAE2CB" />
+              <XAxis dataKey="province" angle={-45} textAnchor="end" height={100} tick={{ fontSize: 11, fill: "#8B7F63", fontFamily: "IBM Plex Mono" }} />
+              <YAxis tick={{ fontSize: 11, fill: "#8B7F63", fontFamily: "IBM Plex Mono" }} />
               <Tooltip content={<CustomTooltip />} />
               <Bar
                 dataKey="count"
                 onClick={(data) => handleProvinceClick(data.province)}
                 cursor="pointer"
+                radius={[3, 3, 0, 0]}
               >
                 {provinceData.map((entry, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={PROVINCE_COLORS[index % PROVINCE_COLORS.length]}
-                  />
+                  <Cell key={`cell-${index}`} fill={PROVINCE_COLORS[index % PROVINCE_COLORS.length]} />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         ) : (
-          <div className="text-center py-12 text-gray-500">No province data available</div>
+          <div className={`text-center py-12 text-[#8B7F63] text-sm ${ds.mono}`}>No province data available</div>
         )}
       </div>
 
@@ -564,123 +546,87 @@ export default function Dashboard() {
           <div>
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              <div className="bg-gradient-to-br from-green-50 to-white p-4 rounded-xl border border-green-200">
-                <p className="text-sm text-gray-600">Total FCAs</p>
-                <p className="text-2xl font-bold text-gray-800">{provinceTotalAssociations}</p>
+              <div className={`${ds.cardBase} p-4`}>
+                <p className={ds.eyebrow}>Total FCAs</p>
+                <p className={`text-2xl font-bold text-[#2A241C] mt-1.5 ${ds.mono}`}>{provinceTotalAssociations}</p>
               </div>
-              <div className="bg-gradient-to-br from-blue-50 to-white p-4 rounded-xl border border-blue-200">
-                <p className="text-sm text-gray-600">Registration Types</p>
-                <div className="flex gap-4 mt-2">
+              <div className={`${ds.cardBase} p-4`}>
+                <p className={ds.eyebrow}>Registration Types</p>
+                <div className="flex flex-wrap gap-3 mt-2.5">
                   {provinceRegTypeCounts.map((item) => (
-                    <div key={item.name}>
+                    <div key={item.name} className="flex items-center gap-1.5">
                       <span
-                        className="inline-block w-3 h-3 rounded-full mr-1"
+                        className="inline-block w-2.5 h-2.5 rounded-full"
                         style={{
                           backgroundColor:
-                            item.name === "CDA"
-                              ? "#10B981"
-                              : item.name === "SEC"
-                              ? "#3B82F6"
-                              : "#F59E0B",
+                            item.name === "CDA" ? "#3F6B4C" : item.name === "SEC" ? "#4A5F73" : "#9A6B1F",
                         }}
                       ></span>
-                      <span className="text-sm font-medium">
+                      <span className={`text-xs font-medium text-[#3D362A] ${ds.mono}`}>
                         {item.name}: {item.value}
                       </span>
                     </div>
                   ))}
                   {provinceRegTypeCounts.length === 0 && (
-                    <span className="text-gray-500 text-sm">No registration data</span>
+                    <span className="text-[#8B7F63] text-sm">No registration data</span>
                   )}
                 </div>
               </div>
             </div>
 
             {/* Associations Table */}
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Association Name
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Municipality
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Registration Type
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Total Members
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-100">
-                  {provinceAssociations.map((assoc, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {assoc.name || "—"}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {assoc.municipality || "—"}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            assoc.registration_type?.toUpperCase() === "CDA"
-                              ? "bg-green-100 text-green-800"
-                              : assoc.registration_type?.toUpperCase() === "SEC"
-                              ? "bg-blue-100 text-blue-800"
-                              : assoc.registration_type?.toUpperCase() === "DOLE"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : "bg-gray-100 text-gray-800"
-                          }`}
-                        >
-                          {assoc.registration_type || "—"}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            assoc.status === "Active"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : "bg-red-100 text-red-800"
-                          }`}
-                        >
-                          {assoc.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {assoc.totalMembers?.toLocaleString() || 0}
-                      </td>
+            <div className={`${ds.cardBase} overflow-hidden`}>
+              <div className="overflow-x-auto">
+                <table className="min-w-full">
+                  <thead className="bg-[#EFE7D2] border-b border-[#DED2B4]">
+                    <tr>
+                      <th className={`px-5 py-3 text-left ${ds.mono} text-[10px] font-semibold text-[#6B6350] uppercase tracking-[0.14em]`}>
+                        Association Name
+                      </th>
+                      <th className={`px-5 py-3 text-left ${ds.mono} text-[10px] font-semibold text-[#6B6350] uppercase tracking-[0.14em]`}>
+                        Municipality
+                      </th>
+                      <th className={`px-5 py-3 text-left ${ds.mono} text-[10px] font-semibold text-[#6B6350] uppercase tracking-[0.14em]`}>
+                        Registration Type
+                      </th>
+                      <th className={`px-5 py-3 text-left ${ds.mono} text-[10px] font-semibold text-[#6B6350] uppercase tracking-[0.14em]`}>
+                        Status
+                      </th>
+                      <th className={`px-5 py-3 text-left ${ds.mono} text-[10px] font-semibold text-[#6B6350] uppercase tracking-[0.14em]`}>
+                        Total Members
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              {provinceAssociations.length === 0 && (
-                <div className="text-center py-8 text-gray-500">No associations found for this province.</div>
-              )}
+                  </thead>
+                  <tbody className="divide-y divide-[#EAE2CB]">
+                    {provinceAssociations.map((assoc, idx) => (
+                      <tr key={idx} className={`hover:bg-[#F1EADA]/70 transition-colors ${idx % 2 === 1 ? "bg-[#FBF8EF]/60" : ""}`}>
+                        <td className={`px-5 py-3.5 whitespace-nowrap text-sm font-semibold text-[#2A241C] ${ds.display}`}>
+                          {assoc.name || "—"}
+                        </td>
+                        <td className="px-5 py-3.5 whitespace-nowrap text-sm text-[#5B5340]">
+                          {assoc.municipality || "—"}
+                        </td>
+                        <td className="px-5 py-3.5 whitespace-nowrap text-sm">
+                          <RegTypeTag type={assoc.registration_type} />
+                        </td>
+                        <td className="px-5 py-3.5 whitespace-nowrap text-sm">
+                          <StatusStamp status={assoc.status} />
+                        </td>
+                        <td className={`px-5 py-3.5 whitespace-nowrap text-sm text-[#2A241C] ${ds.mono}`}>
+                          {assoc.totalMembers?.toLocaleString() || 0}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {provinceAssociations.length === 0 && (
+                  <div className={`text-center py-10 text-[#8B7F63] text-sm ${ds.mono}`}>No associations found for this province.</div>
+                )}
+              </div>
             </div>
           </div>
         )}
       </Modal>
-
-      <style jsx>{`
-        @keyframes spin {
-          0% {
-            transform: rotate(0deg);
-          }
-          100% {
-            transform: rotate(360deg);
-          }
-        }
-        .animate-spin {
-          animation: spin 1s linear infinite;
-        }
-      `}</style>
     </div>
   );
 }

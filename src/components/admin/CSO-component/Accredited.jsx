@@ -47,6 +47,67 @@ import {
 } from 'lucide-react';
 import { db } from '../../../config/firebase';
 
+// ======================================================================
+// DESIGN SYSTEM — "Civic Registry"
+// Paper/vellum ground, oxblood + brass accents, Fraunces for structure,
+// IBM Plex Mono for every piece of record data (numbers, codes, dates).
+// ======================================================================
+
+const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,450;9..144,550;9..144,650;9..144,700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');`;
+
+const ds = {
+  page: 'bg-[#F5F1E6] text-[#2A241C]',
+  cardBase: 'bg-[#FFFDF7] border border-[#DED2B4] rounded-lg shadow-[0_1px_2px_rgba(42,36,28,0.05)]',
+  hairline: 'border-[#DED2B4]',
+  eyebrow: "font-['IBM_Plex_Mono'] text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8B7F63]",
+  label: "block font-['IBM_Plex_Mono'] text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8B7F63] mb-1.5",
+  input:
+    "w-full text-[#2A241C] bg-white border border-[#D8CDAE] rounded-md px-3.5 py-2.5 text-sm placeholder:text-[#AFA588] focus:outline-none focus:ring-2 focus:ring-[#7C2E2E]/25 focus:border-[#7C2E2E] transition-colors duration-150",
+  select:
+    "text-[#2A241C] bg-white border border-[#D8CDAE] rounded-md px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#7C2E2E]/25 focus:border-[#7C2E2E] transition-colors duration-150",
+  mono: "font-['IBM_Plex_Mono']",
+  display: "font-['Fraunces']",
+  btnPrimary:
+    "inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#7C2E2E] text-[#F8F3E7] text-sm font-semibold rounded-md shadow-sm hover:bg-[#692525] active:bg-[#551D1D] disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150",
+  btnSuccess:
+    "inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#3F6B4C] text-[#F8F3E7] text-sm font-semibold rounded-md shadow-sm hover:bg-[#345A3F] active:bg-[#2A4933] disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150",
+  btnSecondary:
+    "inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-[#D8CDAE] text-[#2A241C] text-sm font-semibold rounded-md hover:bg-[#F1EADA] active:bg-[#E9E1CC] transition-colors duration-150",
+  btnGhost:
+    "inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border border-[#D8CDAE] bg-white text-[#5B5340] hover:bg-[#F1EADA] transition-colors duration-150",
+  iconBtn:
+    "p-1.5 rounded-md text-[#8B7F63] hover:bg-[#F1EADA] transition-colors duration-150",
+};
+
+const STAMP_STYLES = {
+  Active: 'text-[#3F6B4C] border-[#3F6B4C]/50 bg-[#3F6B4C]/[0.07]',
+  Inactive: 'text-[#7C2E2E] border-[#7C2E2E]/50 bg-[#7C2E2E]/[0.07]',
+  Pending: 'text-[#9A6B1F] border-[#9A6B1F]/50 bg-[#9A6B1F]/[0.07]',
+  Suspended: 'text-[#7C2E2E] border-[#7C2E2E]/50 bg-[#7C2E2E]/[0.07]',
+};
+
+// Rubber-stamp style status indicator — the signature motif of this registry UI
+const StatusStamp = ({ status, className = '' }) => (
+  <span
+    className={`inline-flex items-center px-2.5 py-1 rounded-[3px] border-2 font-['IBM_Plex_Mono'] text-[10px] font-bold uppercase tracking-[0.12em] -rotate-1 ${STAMP_STYLES[status] || 'text-[#5B5340] border-[#5B5340]/50 bg-[#5B5340]/[0.07]'} ${className}`}
+  >
+    {status || 'Unknown'}
+  </span>
+);
+
+const ScopeTag = ({ scope }) => {
+  const map = {
+    Regional: 'bg-[#4A5F73]/10 text-[#4A5F73] border-[#4A5F73]/25',
+    National: 'bg-[#6B4A73]/10 text-[#6B4A73] border-[#6B4A73]/25',
+    Local: 'bg-[#5B5340]/10 text-[#5B5340] border-[#5B5340]/25',
+  };
+  return (
+    <span className={`inline-flex px-2 py-0.5 rounded border font-['IBM_Plex_Mono'] text-[10px] font-semibold uppercase tracking-wider ${map[scope] || map.Local}`}>
+      {scope}
+    </span>
+  );
+};
+
 // ---------- Helper: Check if a date string is expired ----------
 const isExpired = (expirationDateString) => {
   if (!expirationDateString) return false;
@@ -190,35 +251,60 @@ const DataTable = ({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+    <div className={`${ds.cardBase} overflow-hidden`}>
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+        <table className="min-w-full">
+          <thead className="bg-[#EFE7D2] border-b border-[#DED2B4]">
             <tr>
               {columns.map((column) => (
                 <th
                   key={column.key}
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
+                  className={`px-5 py-3.5 text-left font-['IBM_Plex_Mono'] text-[10px] font-semibold text-[#6B6350] uppercase tracking-[0.14em] whitespace-nowrap ${column.sortable ? 'cursor-pointer hover:text-[#2A241C] transition-colors' : ''}`}
                   onClick={() => column.sortable && onSort(column.key)}
                 >
-                  <div className="flex items-center space-x-1">
+                  <div className="flex items-center gap-1.5">
                     <span>{column.header}</span>
-                    {column.sortable && sortField === column.key && <span className="ml-1">{sortDirection === 'asc' ? '↑' : '↓'}</span>}
+                    {column.sortable && sortField === column.key && (
+                      <span className="text-[#7C2E2E]">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                    )}
                   </div>
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className="divide-y divide-[#EAE2CB]">
             {isLoading ? (
-              <tr><td colSpan={columns.length} className="px-6 py-12 text-center"><div className="flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div></div><p className="mt-2 text-gray-500">Loading data...</p></td></tr>
+              <tr>
+                <td colSpan={columns.length} className="px-6 py-16 text-center">
+                  <div className="flex justify-center">
+                    <div className="animate-spin rounded-full h-7 w-7 border-2 border-[#DED2B4] border-t-[#7C2E2E]"></div>
+                  </div>
+                  <p className={`mt-3 text-sm text-[#8B7F63] ${ds.mono}`}>Loading registry records…</p>
+                </td>
+              </tr>
             ) : data.length === 0 ? (
-              <tr><td colSpan={columns.length} className="px-6 py-12 text-center"><div className="flex flex-col items-center"><AlertCircle className="h-12 w-12 text-gray-400 mb-4" /><p className="text-gray-500 text-lg font-medium">No records found</p><p className="text-gray-400 mt-1">Try adjusting your search or filters</p></div></td></tr>
+              <tr>
+                <td colSpan={columns.length} className="px-6 py-16 text-center">
+                  <div className="flex flex-col items-center">
+                    <AlertCircle className="h-10 w-10 text-[#C9BE9F] mb-3" strokeWidth={1.5} />
+                    <p className={`text-[#2A241C] text-base font-semibold ${ds.display}`}>No records found</p>
+                    <p className="text-[#8B7F63] mt-1 text-sm">Try adjusting your search or filters</p>
+                  </div>
+                </td>
+              </tr>
             ) : (
-              data.map((row) => (
-                <tr key={row.id} className="hover:bg-gray-50 transition-colors">
+              data.map((row, idx) => (
+                <tr
+                  key={row.id}
+                  className={`hover:bg-[#F1EADA]/70 transition-colors duration-100 ${idx % 2 === 1 ? 'bg-[#FBF8EF]/60' : ''}`}
+                >
                   {columns.map((column) => (
-                    <td key={column.key} className="px-6 py-4 whitespace-nowrap text-sm" onClick={(e) => { if (column.key !== 'actions') handleRowClick(row, e); }} style={{ cursor: column.key !== 'actions' ? 'pointer' : 'default' }}>
+                    <td
+                      key={column.key}
+                      className="px-5 py-4 text-sm align-top"
+                      onClick={(e) => { if (column.key !== 'actions') handleRowClick(row, e); }}
+                      style={{ cursor: column.key !== 'actions' ? 'pointer' : 'default' }}
+                    >
                       {column.render ? column.render(row) : row[column.key]}
                     </td>
                   ))}
@@ -229,28 +315,50 @@ const DataTable = ({
         </table>
       </div>
       {pagination && data.length > 0 && (
-        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <select value={pagination.rowsPerPage} onChange={(e) => onRowsPerPageChange(Number(e.target.value))} className="rounded-md border border-gray-300 text-black bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <div className="px-5 py-4 border-t border-[#DED2B4] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-[#FBF8EF]">
+          <div className="flex flex-wrap items-center gap-4">
+            <select
+              value={pagination.rowsPerPage}
+              onChange={(e) => onRowsPerPageChange(Number(e.target.value))}
+              className={`${ds.select} py-1.5 text-xs`}
+            >
               {[5, 10, 25, 50, 100].map(size => <option key={size} value={size}>{size} per page</option>)}
             </select>
-            <span className="text-sm text-gray-700">Showing {pagination.startIndex + 1} to {Math.min(pagination.endIndex, pagination.total)} of {pagination.total} entries</span>
+            <span className={`text-xs text-[#8B7F63] ${ds.mono}`}>
+              {pagination.startIndex + 1}–{Math.min(pagination.endIndex, pagination.total)} of {pagination.total}
+            </span>
           </div>
-          <div className="flex items-center space-x-2">
-            <button onClick={() => onPageChange(1)} disabled={pagination.currentPage === 1} className="p-1.5 rounded-md border border-gray-300 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"><ChevronsLeft className="h-4 w-4 text-black" /></button>
-            <button onClick={() => onPageChange(pagination.currentPage - 1)} disabled={pagination.currentPage === 1} className="p-1.5 rounded-md border border-gray-300 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"><ChevronLeft className="h-4 w-4 text-black" /></button>
-            <div className="flex space-x-1">
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => onPageChange(1)} disabled={pagination.currentPage === 1} className={`${ds.iconBtn} border border-[#D8CDAE] bg-white disabled:opacity-40 disabled:cursor-not-allowed`}>
+              <ChevronsLeft className="h-4 w-4" />
+            </button>
+            <button onClick={() => onPageChange(pagination.currentPage - 1)} disabled={pagination.currentPage === 1} className={`${ds.iconBtn} border border-[#D8CDAE] bg-white disabled:opacity-40 disabled:cursor-not-allowed`}>
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <div className="flex gap-1">
               {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
                 let pageNum;
                 if (pagination.totalPages <= 5) pageNum = i + 1;
                 else if (pagination.currentPage <= 3) pageNum = i + 1;
                 else if (pagination.currentPage >= pagination.totalPages - 2) pageNum = pagination.totalPages - 4 + i;
                 else pageNum = pagination.currentPage - 2 + i;
-                return <button key={pageNum} onClick={() => onPageChange(pageNum)} className={`w-8 h-8 rounded-md text-sm font-medium ${pagination.currentPage === pageNum ? 'bg-blue-600 text-white' : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}>{pageNum}</button>;
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => onPageChange(pageNum)}
+                    className={`w-8 h-8 rounded-md text-xs font-semibold font-['IBM_Plex_Mono'] transition-colors ${pagination.currentPage === pageNum ? 'bg-[#7C2E2E] text-[#F8F3E7]' : 'border border-[#D8CDAE] bg-white text-[#5B5340] hover:bg-[#F1EADA]'}`}
+                  >
+                    {pageNum}
+                  </button>
+                );
               })}
             </div>
-            <button onClick={() => onPageChange(pagination.currentPage + 1)} disabled={pagination.currentPage === pagination.totalPages} className="p-1.5 rounded-md border border-gray-300 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"><ChevronRight className="h-4 w-4 text-black" /></button>
-            <button onClick={() => onPageChange(pagination.totalPages)} disabled={pagination.currentPage === pagination.totalPages} className="p-1.5 rounded-md border border-gray-300 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"><ChevronsRight className="h-4 w-4 text-black" /></button>
+            <button onClick={() => onPageChange(pagination.currentPage + 1)} disabled={pagination.currentPage === pagination.totalPages} className={`${ds.iconBtn} border border-[#D8CDAE] bg-white disabled:opacity-40 disabled:cursor-not-allowed`}>
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <button onClick={() => onPageChange(pagination.totalPages)} disabled={pagination.currentPage === pagination.totalPages} className={`${ds.iconBtn} border border-[#D8CDAE] bg-white disabled:opacity-40 disabled:cursor-not-allowed`}>
+              <ChevronsRight className="h-4 w-4" />
+            </button>
           </div>
         </div>
       )}
@@ -263,13 +371,20 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   if (!isOpen) return null;
   const sizeClasses = { sm: 'max-w-md', md: 'max-w-2xl', lg: 'max-w-4xl', xl: 'max-w-6xl' };
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto bg-black bg-opacity-50">
-      <div className={`relative bg-white rounded-2xl shadow-2xl w-full mx-4 ${sizeClasses[size]}`}>
-        <div className="sticky top-0 bg-white rounded-t-2xl px-6 py-4 border-b border-gray-200 z-10">
-          <div className="flex items-center justify-between"><h3 className="text-2xl font-bold text-gray-900">{title}</h3><button onClick={onClose} className="text-gray-400 hover:text-gray-500 transition-colors p-1"><X className="h-6 w-6" /></button></div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto bg-[#1C1710]/60 backdrop-blur-[2px] p-4 animate-[fadeIn_0.15s_ease-out]">
+      <div className={`relative bg-[#FFFDF7] rounded-lg shadow-2xl w-full ${sizeClasses[size]} border border-[#DED2B4] animate-[modalIn_0.18s_ease-out]`}>
+        <div className="sticky top-0 bg-[#FFFDF7] rounded-t-lg px-6 py-4 border-b border-[#DED2B4] z-10 flex items-center justify-between">
+          <h3 className={`text-xl sm:text-2xl font-semibold text-[#2A241C] ${ds.display}`}>{title}</h3>
+          <button onClick={onClose} className="text-[#8B7F63] hover:text-[#2A241C] hover:bg-[#F1EADA] transition-colors p-1.5 rounded-md">
+            <X className="h-5 w-5" />
+          </button>
         </div>
         <div className="max-h-[70vh] overflow-y-auto p-6">{children}</div>
       </div>
+      <style>{`
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes modalIn { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+      `}</style>
     </div>
   );
 };
@@ -295,6 +410,17 @@ const initialFormState = {
   region: 'MIMAROPA',
   status: 'Active'
 };
+
+// Small section wrapper used inside the Add/Edit form to keep the "dossier folder" rhythm
+const FormSection = ({ index, title, children }) => (
+  <div className={`${ds.cardBase} p-5`}>
+    <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-[#EAE2CB]">
+      <span className={`flex items-center justify-center w-6 h-6 rounded-full bg-[#7C2E2E]/10 text-[#7C2E2E] text-[11px] font-bold ${ds.mono}`}>{index}</span>
+      <h4 className={`font-semibold text-[#2A241C] text-sm uppercase tracking-wide ${ds.mono}`}>{title}</h4>
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">{children}</div>
+  </div>
+);
 
 const Accredited = () => {
   const [csoData, setCsoData] = useState([]);
@@ -757,51 +883,131 @@ const Accredited = () => {
   }, [csoData]);
 
   const columns = [
-    { key: 'no', header: 'No.', sortable: true, render: row => <div className="font-mono font-bold">{row.no}</div> },
-    { key: 'name_of_association', header: 'Association Name', sortable: true, render: row => <div><div className="font-semibold">{row.name_of_association}</div><div className="text-sm text-gray-500 flex items-center mt-1"><MapPin className="h-3 w-3 mr-1" />{row.province || 'No province'}</div></div> },
-    { key: 'contact_person', header: 'Contact Person', sortable: true, render: row => <div><div>{row.contact_person}</div><div className="text-sm text-gray-500">{row.position}</div></div> },
-    { key: 'contact', header: 'Contact Info', render: row => <div className="space-y-1">{row.contact_number && <div className="flex items-center text-sm"><Phone className="h-3 w-3 mr-2 text-gray-600" />{row.contact_number}</div>}{row.email_address && <div className="flex items-center text-sm"><Mail className="h-3 w-3 mr-2 text-gray-600" />{row.email_address}</div>}</div> },
-    { key: 'scope', header: 'Scope & Members', render: row => <div className="space-y-1"><span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs ${row.scope === 'Regional' ? 'bg-blue-100 text-blue-800' : row.scope === 'National' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>{row.scope}</span>{row.no_of_members && <div className="flex items-center text-sm text-gray-600"><Users className="h-3 w-3 mr-1" />{row.no_of_members} members</div>}</div> },
-    { key: 'accreditation', header: 'Accreditation', render: row => <div className="space-y-1"><div className="font-mono text-sm">{row.accreditation_no}</div>{row.date_of_expiration && <div className={`text-xs ${isExpiringSoon(row.date_of_expiration) ? 'text-amber-600 font-semibold' : ''}`}>Expires: {new Date(row.date_of_expiration).toLocaleDateString()}{isExpiringSoon(row.date_of_expiration) && ' (soon)'}</div>}</div> },
-    { key: 'actions', header: 'Actions', render: row => <div className="flex space-x-2"><button onClick={() => handleView(row)} className="p-1.5 text-gray-600 hover:text-blue-600 rounded-lg"><Eye className="h-4 w-4" /></button><button onClick={() => handleEdit(row)} className="p-1.5 text-gray-600 hover:text-green-600 rounded-lg"><Edit className="h-4 w-4" /></button><button onClick={() => openDeleteModal(row)} className="p-1.5 text-gray-600 hover:text-red-600 rounded-lg"><Trash2 className="h-4 w-4" /></button>{row.certificate_of_accreditation && <a href={row.certificate_of_accreditation} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1.5 text-gray-600 hover:text-purple-600 rounded-lg"><ExternalLink className="h-4 w-4" /></a>}</div> }
+    {
+      key: 'no',
+      header: 'No.',
+      sortable: true,
+      render: row => (
+        <div className={`inline-flex items-center justify-center min-w-[2.25rem] px-2 py-1 rounded border border-[#DED2B4] bg-[#F1EADA] font-bold text-xs text-[#5B5340] ${ds.mono}`}>
+          {row.no}
+        </div>
+      )
+    },
+    {
+      key: 'name_of_association',
+      header: 'Association',
+      sortable: true,
+      render: row => (
+        <div>
+          <div className={`font-semibold text-[#2A241C] ${ds.display} text-[15px] leading-snug`}>{row.name_of_association}</div>
+          <div className="text-xs text-[#8B7F63] flex items-center mt-1 gap-1">
+            <MapPin className="h-3 w-3 flex-shrink-0" />{row.province || 'No province'}
+          </div>
+        </div>
+      )
+    },
+    {
+      key: 'contact_person',
+      header: 'Contact Person',
+      sortable: true,
+      render: row => (
+        <div>
+          <div className="text-[#2A241C]">{row.contact_person}</div>
+          <div className="text-xs text-[#8B7F63] mt-0.5">{row.position}</div>
+        </div>
+      )
+    },
+    {
+      key: 'contact',
+      header: 'Contact Info',
+      render: row => (
+        <div className={`space-y-1 text-xs ${ds.mono} text-[#5B5340]`}>
+          {row.contact_number && <div className="flex items-center gap-1.5"><Phone className="h-3 w-3 text-[#8B7F63]" />{row.contact_number}</div>}
+          {row.email_address && <div className="flex items-center gap-1.5"><Mail className="h-3 w-3 text-[#8B7F63]" />{row.email_address}</div>}
+        </div>
+      )
+    },
+    {
+      key: 'scope',
+      header: 'Scope & Members',
+      render: row => (
+        <div className="space-y-1.5">
+          <ScopeTag scope={row.scope} />
+          {row.no_of_members && (
+            <div className={`flex items-center text-xs text-[#5B5340] ${ds.mono}`}>
+              <Users className="h-3 w-3 mr-1.5 text-[#8B7F63]" />{row.no_of_members} members
+            </div>
+          )}
+        </div>
+      )
+    },
+    {
+      key: 'accreditation',
+      header: 'Accreditation',
+      render: row => (
+        <div className="space-y-1">
+          <div className={`text-xs text-[#2A241C] ${ds.mono}`}>{row.accreditation_no}</div>
+          {row.date_of_expiration && (
+            <div className={`text-[11px] ${ds.mono} ${isExpiringSoon(row.date_of_expiration) ? 'text-[#9A6B1F] font-semibold' : 'text-[#8B7F63]'}`}>
+              Exp: {new Date(row.date_of_expiration).toLocaleDateString()}{isExpiringSoon(row.date_of_expiration) && ' · soon'}
+            </div>
+          )}
+        </div>
+      )
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: row => (
+        <div className="flex items-center gap-1">
+          <button onClick={() => handleView(row)} className={`${ds.iconBtn} hover:text-[#4A5F73]`} title="View"><Eye className="h-4 w-4" /></button>
+          <button onClick={() => handleEdit(row)} className={`${ds.iconBtn} hover:text-[#3F6B4C]`} title="Edit"><Edit className="h-4 w-4" /></button>
+          <button onClick={() => openDeleteModal(row)} className={`${ds.iconBtn} hover:text-[#7C2E2E]`} title="Delete"><Trash2 className="h-4 w-4" /></button>
+          {row.certificate_of_accreditation && (
+            <a href={row.certificate_of_accreditation} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className={`${ds.iconBtn} hover:text-[#6B4A73]`} title="Certificate">
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          )}
+        </div>
+      )
+    }
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
-      {/* Notification Banner (same as before) */}
+    <div className={`min-h-screen ${ds.page} p-4 md:p-8`}>
+      <style>{`
+        ${FONT_IMPORT}
+        ::selection { background: rgba(124,46,46,0.18); }
+      `}</style>
+
+      {/* Notification Banner */}
       {visibleExpiringRecords.length > 0 && showNotificationBanner && (
-        <div className="mb-6 bg-amber-50 border-l-4 border-amber-500 rounded-lg shadow-md overflow-hidden">
-          <div className="p-4">
-            <div className="flex items-start justify-between">
-              <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0">
-                  <Bell className="h-5 w-5 text-amber-600" />
+        <div className="mb-6 bg-[#FBF3DF] border border-[#E3C77B]/60 border-l-4 border-l-[#9A6B1F] rounded-lg shadow-sm overflow-hidden">
+          <div className="p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 mt-0.5">
+                  <Bell className="h-5 w-5 text-[#9A6B1F]" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-amber-800">Renewal Reminder</h3>
-                  <p className="text-sm text-amber-700 mt-1">
-                    {visibleExpiringRecords.length} CSO{visibleExpiringRecords.length !== 1 ? 's' : ''} require renewal within 90 days.
+                  <h3 className={`text-sm font-bold text-[#7A5814] uppercase tracking-wide ${ds.mono}`}>Renewal Reminder</h3>
+                  <p className="text-sm text-[#5B4A1F] mt-1">
+                    {visibleExpiringRecords.length} organization{visibleExpiringRecords.length !== 1 ? 's' : ''} require renewal within 90 days.
                   </p>
                   <div className="mt-3 space-y-2">
                     {visibleExpiringRecords.slice(0, 5).map(record => {
                       const daysLeft = getDaysUntilExpiration(record.date_of_expiration);
                       return (
-                        <div key={record.id} className="flex items-center justify-between bg-white rounded-lg p-2 shadow-sm">
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-gray-900">{record.name_of_association}</p>
-                            <p className="text-xs text-gray-500">Expires: {new Date(record.date_of_expiration).toLocaleDateString()} ({daysLeft} days left)</p>
+                        <div key={record.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white/70 border border-[#E3C77B]/40 rounded-md p-2.5">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-[#2A241C] truncate">{record.name_of_association}</p>
+                            <p className={`text-xs text-[#8B7F63] ${ds.mono}`}>Expires {new Date(record.date_of_expiration).toLocaleDateString()} · {daysLeft}d left</p>
                           </div>
-                          <div className="flex space-x-2">
-                            <button
-                              onClick={() => handleRenewalClick(record)}
-                              className="px-3 py-1 text-xs bg-amber-600 text-white rounded-md hover:bg-amber-700"
-                            >
+                          <div className="flex gap-2 flex-shrink-0">
+                            <button onClick={() => handleRenewalClick(record)} className="px-3 py-1 text-xs font-semibold bg-[#9A6B1F] text-white rounded hover:bg-[#835B19] transition-colors">
                               Renew Now
                             </button>
-                            <button
-                              onClick={() => dismissNotification(record.id)}
-                              className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700"
-                            >
+                            <button onClick={() => dismissNotification(record.id)} className="px-2 py-1 text-xs text-[#8B7F63] hover:text-[#2A241C] transition-colors">
                               Dismiss
                             </button>
                           </div>
@@ -809,19 +1015,15 @@ const Accredited = () => {
                       );
                     })}
                     {visibleExpiringRecords.length > 5 && (
-                      <p className="text-xs text-amber-600">+{visibleExpiringRecords.length - 5} more...</p>
+                      <p className={`text-xs text-[#9A6B1F] ${ds.mono}`}>+{visibleExpiringRecords.length - 5} more…</p>
                     )}
                   </div>
                 </div>
               </div>
-              <div className="flex space-x-2">
-                <button onClick={() => setShowExpiringModal(true)} className="text-xs text-amber-700 hover:text-amber-900 font-medium">
-                  View All
-                </button>
-                <button onClick={dismissAllNotifications} className="text-xs text-amber-700 hover:text-amber-900 font-medium">
-                  Dismiss All
-                </button>
-                <button onClick={() => setShowNotificationBanner(false)} className="text-gray-400 hover:text-gray-500">
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <button onClick={() => setShowExpiringModal(true)} className="text-xs font-semibold text-[#7A5814] hover:text-[#5B4A1F] transition-colors">View All</button>
+                <button onClick={dismissAllNotifications} className="text-xs font-semibold text-[#7A5814] hover:text-[#5B4A1F] transition-colors">Dismiss All</button>
+                <button onClick={() => setShowNotificationBanner(false)} className="text-[#8B7F63] hover:text-[#2A241C] transition-colors">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -831,31 +1033,31 @@ const Accredited = () => {
       )}
 
       {/* Modal for all expiring records */}
-      <Modal isOpen={showExpiringModal} onClose={() => setShowExpiringModal(false)} title="CSOs Requiring Renewal" size="lg">
-        <div className="space-y-4">
+      <Modal isOpen={showExpiringModal} onClose={() => setShowExpiringModal(false)} title="Organizations Requiring Renewal" size="lg">
+        <div className="space-y-3">
           {expiringSoonRecords.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">No records expiring soon.</div>
+            <div className="text-center py-10 text-[#8B7F63]">No records expiring soon.</div>
           ) : (
             expiringSoonRecords.map(record => {
               const daysLeft = getDaysUntilExpiration(record.date_of_expiration);
               return (
-                <div key={record.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                <div key={record.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 border border-[#DED2B4] rounded-lg hover:bg-[#F1EADA]/50 transition-colors">
                   <div>
-                    <p className="font-semibold text-gray-900">{record.name_of_association}</p>
-                    <p className="text-sm text-gray-500">Province: {record.province || 'N/A'}</p>
-                    <p className="text-xs text-amber-600">Expires: {new Date(record.date_of_expiration).toLocaleDateString()} ({daysLeft} days left)</p>
+                    <p className={`font-semibold text-[#2A241C] ${ds.display}`}>{record.name_of_association}</p>
+                    <p className="text-sm text-[#8B7F63]">Province: {record.province || 'N/A'}</p>
+                    <p className={`text-xs text-[#9A6B1F] ${ds.mono} mt-0.5`}>Expires {new Date(record.date_of_expiration).toLocaleDateString()} · {daysLeft}d left</p>
                   </div>
-                  <div className="flex space-x-2">
-                    <button onClick={() => { setShowExpiringModal(false); handleRenewalClick(record); }} className="px-3 py-1.5 bg-amber-600 text-white rounded-md text-sm hover:bg-amber-700">Renew</button>
-                    <button onClick={() => { dismissNotification(record.id); }} className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-100">Dismiss</button>
+                  <div className="flex gap-2">
+                    <button onClick={() => { setShowExpiringModal(false); handleRenewalClick(record); }} className={ds.btnPrimary + ' !px-3 !py-1.5 text-xs'}>Renew</button>
+                    <button onClick={() => { dismissNotification(record.id); }} className={ds.btnSecondary + ' !px-3 !py-1.5 text-xs'}>Dismiss</button>
                   </div>
                 </div>
               );
             })
           )}
           {expiringSoonRecords.length > 0 && (
-            <div className="pt-4 border-t border-gray-200 flex justify-end">
-              <button onClick={dismissAllNotifications} className="px-4 py-2 text-sm text-red-600 hover:text-red-800">Dismiss All</button>
+            <div className="pt-4 border-t border-[#DED2B4] flex justify-end">
+              <button onClick={dismissAllNotifications} className="px-4 py-2 text-sm font-semibold text-[#7C2E2E] hover:text-[#551D1D] transition-colors">Dismiss All</button>
             </div>
           )}
         </div>
@@ -863,77 +1065,416 @@ const Accredited = () => {
 
       {/* Header */}
       <div className="mb-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div><h1 className="text-3xl md:text-4xl font-bold text-gray-900">CSO Management System</h1><p className="text-gray-600 mt-2">Manage Civil Society Organizations in MIMAROPA Region</p></div>
-          <div className="flex flex-wrap gap-3">
-            <button onClick={() => setShowAddModal(true)} className="inline-flex items-center px-4 py-2.5 bg-blue-600 text-white font-semibold rounded-xl shadow-lg hover:bg-blue-700"><Plus className="h-5 w-5 mr-2" />Add New CSO</button>
-            <button onClick={exportToExcelWithBeautifulFormatting} className="inline-flex items-center px-4 py-2.5 bg-green-600 text-white font-semibold rounded-xl shadow-lg hover:bg-green-700"><Download className="h-5 w-5 mr-2" />Export Excel</button>
-            <button onClick={() => setShowImportModal(true)} className="inline-flex items-center px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl shadow-lg hover:bg-indigo-700"><Upload className="h-5 w-5 mr-2" />Import</button>
-            <button onClick={fetchCSOData} className="inline-flex items-center px-4 py-2.5 bg-gray-600 text-white font-semibold rounded-xl shadow-lg hover:bg-gray-700"><RefreshCw className="h-5 w-5 mr-2" />Refresh</button>
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5 pb-6 border-b-2 border-[#2A241C]/10">
+          <div>
+            <p className={`${ds.eyebrow} mb-2`}>MIMAROPA Region · Department of Agriculture</p>
+            <h1 className={`text-3xl md:text-[2.5rem] font-bold text-[#2A241C] ${ds.display} leading-tight`}>Civil Society Organization Registry</h1>
+            <p className="text-[#6B6350] mt-2 text-sm">Accreditation records for Civil Society Organizations operating in the MIMAROPA region</p>
+          </div>
+          <div className="flex flex-wrap gap-2.5">
+            <button onClick={() => setShowAddModal(true)} className={ds.btnPrimary}><Plus className="h-4 w-4" />Add New CSO</button>
+            <button onClick={exportToExcelWithBeautifulFormatting} className={ds.btnSuccess}><Download className="h-4 w-4" />Export Excel</button>
+            <button onClick={() => setShowImportModal(true)} className={ds.btnSecondary}><Upload className="h-4 w-4" />Import</button>
+            <button onClick={fetchCSOData} className={ds.btnSecondary}><RefreshCw className="h-4 w-4" />Refresh</button>
           </div>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="bg-blue-500 rounded-2xl shadow-xl p-6 text-white"><div className="flex items-center justify-between"><div><p className="text-blue-100 text-sm font-medium">Total CSOs</p><p className="text-3xl font-bold mt-2">{stats.total}</p></div><Building className="h-12 w-12 opacity-80" /></div><div className="mt-4 pt-4 border-t border-blue-400"><p className="text-blue-100 text-sm">Active: {stats.active}</p></div></div>
-        <div className="bg-green-500 rounded-2xl shadow-xl p-6 text-white"><div className="flex items-center justify-between"><div><p className="text-green-100 text-sm font-medium">With Certificates</p><p className="text-3xl font-bold mt-2">{stats.withCertificates}</p></div><FileText className="h-12 w-12 opacity-80" /></div><div className="mt-4 pt-4 border-t border-green-400"><p className="text-green-100 text-sm">{Math.round((stats.withCertificates / stats.total) * 100) || 0}% of total</p></div></div>
-        <div className="bg-amber-500 rounded-2xl shadow-xl p-6 text-white cursor-pointer hover:bg-amber-600 transition-colors" onClick={() => setShowExpiringModal(true)}><div className="flex items-center justify-between"><div><p className="text-amber-100 text-sm font-medium">Expiring Soon</p><p className="text-3xl font-bold mt-2">{stats.expiringSoon}</p></div><Calendar className="h-12 w-12 opacity-80" /></div><div className="mt-4 pt-4 border-t border-amber-400"><p className="text-amber-100 text-sm">Within next 90 days</p></div></div>
-        <div className="bg-purple-500 rounded-2xl shadow-xl p-6 text-white"><div className="flex items-center justify-between"><div><p className="text-purple-100 text-sm font-medium">Total Members</p><p className="text-3xl font-bold mt-2">{csoData.reduce((sum, i) => sum + (parseInt(i.no_of_members) || 0), 0).toLocaleString()}</p></div><Users className="h-12 w-12 opacity-80" /></div><div className="mt-4 pt-4 border-t border-purple-400"><p className="text-purple-100 text-sm">Across all organizations</p></div></div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className={`${ds.cardBase} p-5 relative overflow-hidden`}>
+          <div className="absolute top-0 right-0 w-20 h-20 bg-[#4A5F73]/[0.06] rounded-bl-full" />
+          <div className="flex items-start justify-between relative">
+            <div>
+              <p className={ds.eyebrow}>Total CSOs</p>
+              <p className={`text-3xl font-bold mt-2 text-[#2A241C] ${ds.mono}`}>{stats.total}</p>
+            </div>
+            <Building className="h-8 w-8 text-[#4A5F73]/40" strokeWidth={1.5} />
+          </div>
+          <div className="mt-4 pt-3 border-t border-[#EAE2CB]">
+            <p className={`text-xs text-[#8B7F63] ${ds.mono}`}>Active: {stats.active}</p>
+          </div>
+        </div>
+        <div className={`${ds.cardBase} p-5 relative overflow-hidden`}>
+          <div className="absolute top-0 right-0 w-20 h-20 bg-[#3F6B4C]/[0.06] rounded-bl-full" />
+          <div className="flex items-start justify-between relative">
+            <div>
+              <p className={ds.eyebrow}>With Certificates</p>
+              <p className={`text-3xl font-bold mt-2 text-[#2A241C] ${ds.mono}`}>{stats.withCertificates}</p>
+            </div>
+            <FileText className="h-8 w-8 text-[#3F6B4C]/40" strokeWidth={1.5} />
+          </div>
+          <div className="mt-4 pt-3 border-t border-[#EAE2CB]">
+            <p className={`text-xs text-[#8B7F63] ${ds.mono}`}>{Math.round((stats.withCertificates / stats.total) * 100) || 0}% of total</p>
+          </div>
+        </div>
+        <button
+          onClick={() => setShowExpiringModal(true)}
+          className={`${ds.cardBase} p-5 relative overflow-hidden text-left hover:border-[#9A6B1F]/50 hover:shadow-md transition-all duration-150`}
+        >
+          <div className="absolute top-0 right-0 w-20 h-20 bg-[#9A6B1F]/[0.08] rounded-bl-full" />
+          <div className="flex items-start justify-between relative">
+            <div>
+              <p className={ds.eyebrow}>Expiring Soon</p>
+              <p className={`text-3xl font-bold mt-2 text-[#9A6B1F] ${ds.mono}`}>{stats.expiringSoon}</p>
+            </div>
+            <Calendar className="h-8 w-8 text-[#9A6B1F]/50" strokeWidth={1.5} />
+          </div>
+          <div className="mt-4 pt-3 border-t border-[#EAE2CB]">
+            <p className={`text-xs text-[#8B7F63] ${ds.mono}`}>Within next 90 days</p>
+          </div>
+        </button>
+        <div className={`${ds.cardBase} p-5 relative overflow-hidden`}>
+          <div className="absolute top-0 right-0 w-20 h-20 bg-[#6B4A73]/[0.06] rounded-bl-full" />
+          <div className="flex items-start justify-between relative">
+            <div>
+              <p className={ds.eyebrow}>Total Members</p>
+              <p className={`text-3xl font-bold mt-2 text-[#2A241C] ${ds.mono}`}>{csoData.reduce((sum, i) => sum + (parseInt(i.no_of_members) || 0), 0).toLocaleString()}</p>
+            </div>
+            <Users className="h-8 w-8 text-[#6B4A73]/40" strokeWidth={1.5} />
+          </div>
+          <div className="mt-4 pt-3 border-t border-[#EAE2CB]">
+            <p className={`text-xs text-[#8B7F63] ${ds.mono}`}>Across all organizations</p>
+          </div>
+        </div>
       </div>
 
       {/* Error & Success Messages */}
-      {error && <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-lg"><div className="flex items-center"><AlertCircle className="h-5 w-5 text-red-500 mr-3" /><div className="text-red-700 font-medium">{error}</div><button onClick={() => setError('')} className="ml-auto text-red-500 hover:text-red-700"><X className="h-5 w-5" /></button></div></div>}
-      {success && <div className="mb-6 bg-green-50 border-l-4 border-green-500 p-4 rounded-lg"><div className="flex items-center"><Check className="h-5 w-5 text-green-500 mr-3" /><div className="text-green-700 font-medium">{success}</div><button onClick={() => setSuccess('')} className="ml-auto text-green-500 hover:text-green-700"><X className="h-5 w-5" /></button></div></div>}
+      {error && (
+        <div className="mb-6 bg-[#7C2E2E]/[0.06] border border-[#7C2E2E]/30 border-l-4 border-l-[#7C2E2E] p-4 rounded-lg flex items-center">
+          <AlertCircle className="h-5 w-5 text-[#7C2E2E] mr-3 flex-shrink-0" />
+          <div className="text-[#7C2E2E] font-medium text-sm flex-1">{error}</div>
+          <button onClick={() => setError('')} className="text-[#7C2E2E] hover:opacity-70"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+      {success && (
+        <div className="mb-6 bg-[#3F6B4C]/[0.07] border border-[#3F6B4C]/30 border-l-4 border-l-[#3F6B4C] p-4 rounded-lg flex items-center">
+          <Check className="h-5 w-5 text-[#3F6B4C] mr-3 flex-shrink-0" />
+          <div className="text-[#3F6B4C] font-medium text-sm flex-1">{success}</div>
+          <button onClick={() => setSuccess('')} className="text-[#3F6B4C] hover:opacity-70"><X className="h-4 w-4" /></button>
+        </div>
+      )}
 
       {/* Search & Filters */}
-      <div className="mb-6 bg-white rounded-2xl shadow-lg p-6">
-        <div className="flex flex-col lg:flex-row gap-4">
-          <div className="flex-1"><div className="relative"><Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" /><input type="text" placeholder="Search by name, contact, accreditation, address, or province..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full text-black pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" />{searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2"><X className="h-5 w-5 text-black" /></button>}</div></div>
-          <div className="flex flex-wrap gap-3">
-            <select value={filters.scope} onChange={(e) => handleFilterChange('scope', e.target.value)} className="px-4 py-3 text-black bg-gray-50 border border-gray-200 rounded-xl"><option value="all">All Scopes</option><option value="Regional">Regional</option><option value="National">National</option><option value="Local">Local</option></select>
-            <select value={filters.hasCertificate} onChange={(e) => handleFilterChange('hasCertificate', e.target.value)} className="px-4 py-3 text-black bg-gray-50 border border-gray-200 rounded-xl"><option value="all">All Certificates</option><option value="yes">With Certificate</option><option value="no">Without Certificate</option></select>
-            <select value={filters.status} onChange={(e) => handleFilterChange('status', e.target.value)} className="px-4 py-3 text-black bg-gray-50 border border-gray-200 rounded-xl"><option value="all">All Status</option><option value="Active">Active</option><option value="Inactive">Inactive</option><option value="Pending">Pending</option></select>
-            <select value={filters.province} onChange={(e) => handleFilterChange('province', e.target.value)} className="px-4 py-3 text-black bg-gray-50 border border-gray-200 rounded-xl"><option value="all">All Provinces</option>{provinces.map(p => <option key={p} value={p}>{p}</option>)}</select>
-            <select value={filters.expirationStatus} onChange={(e) => handleFilterChange('expirationStatus', e.target.value)} className="px-4 py-3 text-black bg-gray-50 border border-gray-200 rounded-xl"><option value="all">All Expiration</option><option value="valid">Valid (not expiring soon)</option><option value="expiringSoon">Expiring Soon (≤90 days)</option></select>
+      <div className={`mb-6 ${ds.cardBase} p-5`}>
+        <div className="flex flex-col lg:flex-row gap-3">
+          <div className="flex-1">
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#AFA588]" />
+              <input
+                type="text"
+                placeholder="Search by name, contact, accreditation, address, or province…"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className={`${ds.input} pl-10 pr-9`}
+              />
+              {searchTerm && (
+                <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#AFA588] hover:text-[#2A241C]">
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2.5">
+            <select value={filters.scope} onChange={(e) => handleFilterChange('scope', e.target.value)} className={ds.select}>
+              <option value="all">All Scopes</option><option value="Regional">Regional</option><option value="National">National</option><option value="Local">Local</option>
+            </select>
+            <select value={filters.hasCertificate} onChange={(e) => handleFilterChange('hasCertificate', e.target.value)} className={ds.select}>
+              <option value="all">All Certificates</option><option value="yes">With Certificate</option><option value="no">Without Certificate</option>
+            </select>
+            <select value={filters.status} onChange={(e) => handleFilterChange('status', e.target.value)} className={ds.select}>
+              <option value="all">All Status</option><option value="Active">Active</option><option value="Inactive">Inactive</option><option value="Pending">Pending</option>
+            </select>
+            <select value={filters.province} onChange={(e) => handleFilterChange('province', e.target.value)} className={ds.select}>
+              <option value="all">All Provinces</option>{provinces.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <select value={filters.expirationStatus} onChange={(e) => handleFilterChange('expirationStatus', e.target.value)} className={ds.select}>
+              <option value="all">All Expiration</option><option value="valid">Valid (not expiring soon)</option><option value="expiringSoon">Expiring Soon (≤90 days)</option>
+            </select>
           </div>
         </div>
-        <div className="mt-4 flex items-center justify-between"><div className="text-gray-600">Showing <span className="font-semibold">{filteredData.length}</span> of <span className="font-semibold">{csoData.length}</span> records{searchTerm && <span className="ml-2 text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded-full">Searching: "{searchTerm}"</span>}</div><div className="text-sm text-gray-500">Last updated: {new Date().toLocaleString()}</div></div>
+        <div className="mt-4 pt-4 border-t border-[#EAE2CB] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+          <div className={`text-sm text-[#6B6350] ${ds.mono}`}>
+            Showing <span className="font-semibold text-[#2A241C]">{filteredData.length}</span> of <span className="font-semibold text-[#2A241C]">{csoData.length}</span> records
+            {searchTerm && <span className="ml-2 text-xs bg-[#7C2E2E]/10 text-[#7C2E2E] px-2 py-0.5 rounded-full">"{searchTerm}"</span>}
+          </div>
+          <div className={`text-xs text-[#AFA588] ${ds.mono}`}>Last updated: {new Date().toLocaleString()}</div>
+        </div>
       </div>
 
       {/* Data Table */}
       <DataTable columns={columns} data={paginatedData} onRowClick={handleView} isLoading={loading} onSort={handleSort} sortField={sortConfig.field} sortDirection={sortConfig.direction} pagination={{ currentPage: pagination.currentPage, totalPages: pagination.totalPages, rowsPerPage: pagination.rowsPerPage, total: filteredData.length, startIndex: (pagination.currentPage - 1) * pagination.rowsPerPage, endIndex: Math.min(pagination.currentPage * pagination.rowsPerPage, filteredData.length) }} onPageChange={handlePageChange} onRowsPerPageChange={handleRowsPerPageChange} />
 
       {/* Footer */}
-      <div className="mt-8 pt-6 border-t border-gray-200"><div className="flex flex-col md:flex-row justify-between items-center text-gray-600 text-sm"><div className="flex items-center space-x-4"><div className="flex items-center"><Shield className="h-4 w-4 mr-2" /><span>MIMAROPA Region CSO Database</span></div><div className="hidden md:block">•</div><div className="flex items-center"><Users className="h-4 w-4 mr-2" /><span>{csoData.length} Organizations Registered</span></div></div></div></div>
+      <div className="mt-8 pt-6 border-t border-[#DED2B4]">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-2 text-[#8B7F63] text-xs">
+          <div className={`flex items-center gap-4 ${ds.mono}`}>
+            <div className="flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" /><span>MIMAROPA Region CSO Database</span></div>
+            <div className="hidden md:block text-[#DED2B4]">•</div>
+            <div className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /><span>{csoData.length} Organizations Registered</span></div>
+          </div>
+        </div>
+      </div>
 
-      {/* ---------- MODALS (unchanged) ---------- */}
+      {/* ---------- MODALS (unchanged logic) ---------- */}
       {/* Add/Edit Modal */}
       <Modal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setFormData(initialFormState); setEditingId(null); }} title={editingId ? "Edit CSO Record" : "Add New CSO Record"} size="xl">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="bg-blue-50 rounded-xl p-4"><h4 className="font-semibold text-blue-800 mb-4">Basic Information</h4><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"><div><label className="block text-sm font-medium text-gray-700 mb-1">No. *</label><input type="text" name="no" value={formData.no} onChange={handleInputChange} required className="w-full px-4 py-2.5 bg-white border border-gray-300 text-black rounded-lg" placeholder="001" /></div><div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Association Name *</label><input type="text" name="name_of_association" value={formData.name_of_association} onChange={handleInputChange} required className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg" placeholder="Enter association name" /></div></div></div>
-          <div className="bg-green-50 rounded-xl p-4"><h4 className="font-semibold text-green-800 mb-4">Contact Information</h4><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"><div><label className="block text-sm font-medium text-gray-700 mb-1">Contact Person</label><input type="text" name="contact_person" value={formData.contact_person} onChange={handleInputChange} className="w-full px-4 text-black py-2.5 bg-white border border-gray-300 rounded-lg" placeholder="Full name" /></div><div><label className="block text-sm font-medium text-gray-700 mb-1">Position</label><input type="text" name="position" value={formData.position} onChange={handleInputChange} className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg" placeholder="Position/Role" /></div><div><label className="block text-sm font-medium text-gray-700 mb-1">Sex</label><div className="flex space-x-4"><label className="flex items-center"><input type="checkbox" name="sex_female" checked={formData.sex_female} onChange={handleInputChange} className="h-4 w-4 text-pink-600 rounded" /><span className="ml-2">Female</span></label><label className="flex items-center"><input type="checkbox" name="sex_male" checked={formData.sex_male} onChange={handleInputChange} className="h-4 w-4 text-blue-600 rounded" /><span className="ml-2">Male</span></label></div></div><div><label className="block text-sm font-medium text-gray-700 mb-1">Contact Number</label><input type="tel" name="contact_number" value={formData.contact_number} onChange={handleInputChange} className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg" placeholder="Phone number" /></div><div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label><input type="email" name="email_address" value={formData.email_address} onChange={handleInputChange} className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg" placeholder="email@example.com" /></div></div></div>
-          <div className="bg-purple-50 rounded-xl p-4"><h4 className="font-semibold text-purple-800 mb-4">Location & Scope</h4><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"><div><label className="block text-sm font-medium text-gray-700 mb-1">No. of Members</label><input type="text" name="no_of_members" value={formData.no_of_members} onChange={handleInputChange} className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg" placeholder="e.g., 45; F:17; M:28" /></div><div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Address *</label><input type="text" name="address" value={formData.address} onChange={handleInputChange} required className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg" placeholder="Full address including province" /></div><div><label className="block text-sm font-medium text-gray-700 mb-1">Province</label><select name="province" value={formData.province} onChange={handleInputChange} className="w-full px-4 text-black py-2.5 bg-white border border-gray-300 rounded-lg"><option value="">Select Province</option>{MIMAROPA_PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}</select></div><div><label className="block text-sm font-medium text-gray-700 mb-1">Region</label><select name="region" value={formData.region} onChange={handleInputChange} className="w-full px-4 text-black py-2.5 bg-white border border-gray-300 rounded-lg"><option value="MIMAROPA">MIMAROPA</option><option value="Other">Other Region</option></select></div><div><label className="block text-sm font-medium text-gray-700 mb-1">Scope</label><select name="scope" value={formData.scope} onChange={handleInputChange} className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg"><option value="Regional">Regional</option><option value="National">National</option><option value="Local">Local</option></select></div></div></div>
-          <div className="bg-amber-50 rounded-xl p-4"><h4 className="font-semibold text-amber-800 mb-4">Accreditation Details</h4><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"><div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Nature of Services</label><textarea name="nature_of_services" value={formData.nature_of_services} onChange={handleInputChange} rows="2" className="w-full px-4 text-black py-2.5 bg-white border border-gray-300 rounded-lg" placeholder="Describe the nature of services provided" /></div><div><label className="block text-sm font-medium text-gray-700 mb-1">Status</label><select name="status" value={formData.status} onChange={handleInputChange} className="w-full text-black px-4 py-2.5 bg-white border border-gray-300 rounded-lg"><option value="Active">Active</option><option value="Inactive">Inactive</option><option value="Pending">Pending</option><option value="Suspended">Suspended</option></select></div><div><label className="block text-sm font-medium text-gray-700 mb-1">Accreditation No.</label><input type="text" name="accreditation_no" value={formData.accreditation_no} onChange={handleInputChange} className="w-full px-4 py-2.5 text-black bg-white border border-gray-300 rounded-lg" placeholder="DA-MIMAROPA CSO ACRN No. XXXX-XXX" /></div><div><label className="block text-sm font-medium text-gray-700 mb-1">Date of Issuance</label><input type="date" name="date_of_issuance" value={formData.date_of_issuance} onChange={handleInputChange} className="w-full px-4 text-black py-2.5 bg-white border border-gray-300 rounded-lg" /></div><div><label className="block text-sm font-medium text-gray-700 mb-1">Date of Expiration</label><input type="date" name="date_of_expiration" value={formData.date_of_expiration} onChange={handleInputChange} className="w-full px-4 text-black py-2.5 bg-white border border-gray-300 rounded-lg" /></div><div className="md:col-span-3"><label className="block text-sm font-medium text-gray-700 mb-1">Certificate Link (Google Drive)</label><input type="url" name="certificate_of_accreditation" value={formData.certificate_of_accreditation} onChange={handleInputChange} className="w-full text-black px-4 py-2.5 bg-white border border-gray-300 rounded-lg" placeholder="https://drive.google.com/file/d/..." />{formData.certificate_of_accreditation && <a href={formData.certificate_of_accreditation} target="_blank" rel="noopener noreferrer" className="inline-flex items-center mt-2 text-sm text-blue-600"><ExternalLink className="h-4 w-4 mr-1" />Test link</a>}</div></div></div>
-          <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200"><button type="button" onClick={() => { setShowAddModal(false); setFormData(initialFormState); setEditingId(null); }} className="px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50">Cancel</button><button type="submit" className="px-6 py-3 bg-blue-600 text-white font-medium rounded-xl shadow-lg hover:bg-blue-700">{editingId ? 'Update Record' : 'Create Record'}</button></div>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <FormSection index="1" title="Basic Information">
+            <div>
+              <label className={ds.label}>No. *</label>
+              <input type="text" name="no" value={formData.no} onChange={handleInputChange} required className={`${ds.input} ${ds.mono}`} placeholder="001" />
+            </div>
+            <div className="md:col-span-2">
+              <label className={ds.label}>Association Name *</label>
+              <input type="text" name="name_of_association" value={formData.name_of_association} onChange={handleInputChange} required className={ds.input} placeholder="Enter association name" />
+            </div>
+          </FormSection>
+
+          <FormSection index="2" title="Contact Information">
+            <div>
+              <label className={ds.label}>Contact Person</label>
+              <input type="text" name="contact_person" value={formData.contact_person} onChange={handleInputChange} className={ds.input} placeholder="Full name" />
+            </div>
+            <div>
+              <label className={ds.label}>Position</label>
+              <input type="text" name="position" value={formData.position} onChange={handleInputChange} className={ds.input} placeholder="Position/Role" />
+            </div>
+            <div>
+              <label className={ds.label}>Sex</label>
+              <div className="flex items-center gap-4 py-2.5">
+                <label className="flex items-center gap-2 text-sm text-[#2A241C]">
+                  <input type="checkbox" name="sex_female" checked={formData.sex_female} onChange={handleInputChange} className="h-4 w-4 accent-[#7C2E2E] rounded" />
+                  Female
+                </label>
+                <label className="flex items-center gap-2 text-sm text-[#2A241C]">
+                  <input type="checkbox" name="sex_male" checked={formData.sex_male} onChange={handleInputChange} className="h-4 w-4 accent-[#4A5F73] rounded" />
+                  Male
+                </label>
+              </div>
+            </div>
+            <div>
+              <label className={ds.label}>Contact Number</label>
+              <input type="tel" name="contact_number" value={formData.contact_number} onChange={handleInputChange} className={`${ds.input} ${ds.mono}`} placeholder="Phone number" />
+            </div>
+            <div className="md:col-span-2">
+              <label className={ds.label}>Email Address</label>
+              <input type="email" name="email_address" value={formData.email_address} onChange={handleInputChange} className={ds.input} placeholder="email@example.com" />
+            </div>
+          </FormSection>
+
+          <FormSection index="3" title="Location & Scope">
+            <div>
+              <label className={ds.label}>No. of Members</label>
+              <input type="text" name="no_of_members" value={formData.no_of_members} onChange={handleInputChange} className={ds.input} placeholder="e.g., 45; F:17; M:28" />
+            </div>
+            <div className="md:col-span-2">
+              <label className={ds.label}>Address *</label>
+              <input type="text" name="address" value={formData.address} onChange={handleInputChange} required className={ds.input} placeholder="Full address including province" />
+            </div>
+            <div>
+              <label className={ds.label}>Province</label>
+              <select name="province" value={formData.province} onChange={handleInputChange} className={`${ds.select} w-full`}>
+                <option value="">Select Province</option>{MIMAROPA_PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={ds.label}>Region</label>
+              <select name="region" value={formData.region} onChange={handleInputChange} className={`${ds.select} w-full`}>
+                <option value="MIMAROPA">MIMAROPA</option><option value="Other">Other Region</option>
+              </select>
+            </div>
+            <div>
+              <label className={ds.label}>Scope</label>
+              <select name="scope" value={formData.scope} onChange={handleInputChange} className={`${ds.select} w-full`}>
+                <option value="Regional">Regional</option><option value="National">National</option><option value="Local">Local</option>
+              </select>
+            </div>
+          </FormSection>
+
+          <FormSection index="4" title="Accreditation Details">
+            <div className="md:col-span-2">
+              <label className={ds.label}>Nature of Services</label>
+              <textarea name="nature_of_services" value={formData.nature_of_services} onChange={handleInputChange} rows="2" className={ds.input} placeholder="Describe the nature of services provided" />
+            </div>
+            <div>
+              <label className={ds.label}>Status</label>
+              <select name="status" value={formData.status} onChange={handleInputChange} className={`${ds.select} w-full`}>
+                <option value="Active">Active</option><option value="Inactive">Inactive</option><option value="Pending">Pending</option><option value="Suspended">Suspended</option>
+              </select>
+            </div>
+            <div>
+              <label className={ds.label}>Accreditation No.</label>
+              <input type="text" name="accreditation_no" value={formData.accreditation_no} onChange={handleInputChange} className={`${ds.input} ${ds.mono}`} placeholder="DA-MIMAROPA CSO ACRN No. XXXX-XXX" />
+            </div>
+            <div>
+              <label className={ds.label}>Date of Issuance</label>
+              <input type="date" name="date_of_issuance" value={formData.date_of_issuance} onChange={handleInputChange} className={`${ds.input} ${ds.mono}`} />
+            </div>
+            <div>
+              <label className={ds.label}>Date of Expiration</label>
+              <input type="date" name="date_of_expiration" value={formData.date_of_expiration} onChange={handleInputChange} className={`${ds.input} ${ds.mono}`} />
+            </div>
+            <div className="md:col-span-3">
+              <label className={ds.label}>Certificate Link (Google Drive)</label>
+              <input type="url" name="certificate_of_accreditation" value={formData.certificate_of_accreditation} onChange={handleInputChange} className={`${ds.input} ${ds.mono}`} placeholder="https://drive.google.com/file/d/..." />
+              {formData.certificate_of_accreditation && (
+                <a href={formData.certificate_of_accreditation} target="_blank" rel="noopener noreferrer" className="inline-flex items-center mt-2 text-xs font-semibold text-[#4A5F73] hover:text-[#374757]">
+                  <ExternalLink className="h-3.5 w-3.5 mr-1" />Test link
+                </a>
+              )}
+            </div>
+          </FormSection>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => { setShowAddModal(false); setFormData(initialFormState); setEditingId(null); }} className={ds.btnSecondary}>Cancel</button>
+            <button type="submit" className={ds.btnPrimary}>{editingId ? 'Update Record' : 'Create Record'}</button>
+          </div>
         </form>
       </Modal>
 
       {/* View Modal */}
       <Modal isOpen={showViewModal} onClose={() => setShowViewModal(false)} title="CSO Details" size="lg">
         {selectedCSO && (
-          <div className="space-y-6">
-            <div className="bg-blue-50 rounded-xl p-6"><div className="flex items-start justify-between"><div><h2 className="text-2xl font-bold text-gray-900">{selectedCSO.name_of_association}</h2><div className="flex items-center mt-2 space-x-3"><span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">No. {selectedCSO.no}</span><span className={`px-3 py-1 rounded-full text-sm font-medium ${selectedCSO.status === 'Active' ? 'bg-green-100 text-green-800' : selectedCSO.status === 'Inactive' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>{selectedCSO.status}</span><span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-medium">{selectedCSO.scope}</span></div></div>{selectedCSO.certificate_of_accreditation && <a href={selectedCSO.certificate_of_accreditation} target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-4 py-2 bg-green-600 text-white font-medium rounded-lg"><ExternalLink className="h-4 w-4 mr-2" />View Certificate</a>}</div></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="bg-white border rounded-xl p-5"><h3 className="font-semibold mb-4 flex items-center"><User className="h-5 w-5 mr-2 text-blue-600" />Contact Information</h3><div className="space-y-2"><p><span className="text-gray-500">Contact Person:</span> {selectedCSO.contact_person || '—'}</p><p><span className="text-gray-500">Position:</span> {selectedCSO.position || '—'}</p><p><span className="text-gray-500">Sex:</span> {selectedCSO.sex_female ? 'Female' : selectedCSO.sex_male ? 'Male' : '—'}</p><p><span className="text-gray-500">Contact Number:</span> {selectedCSO.contact_number || '—'}</p><p><span className="text-gray-500">Email:</span> {selectedCSO.email_address || '—'}</p></div></div><div className="bg-white border rounded-xl p-5"><h3 className="font-semibold mb-4 flex items-center"><MapPin className="h-5 w-5 mr-2 text-green-600" />Location & Members</h3><div className="space-y-2"><p><span className="text-gray-500">Address:</span> {selectedCSO.address || '—'}</p><p><span className="text-gray-500">Province:</span> {selectedCSO.province || '—'}</p><p><span className="text-gray-500">Region:</span> {selectedCSO.region || 'MIMAROPA'}</p><p><span className="text-gray-500">No. of Members:</span> {selectedCSO.no_of_members || '0'}</p></div></div><div className="md:col-span-2 bg-white border rounded-xl p-5"><h3 className="font-semibold mb-4 flex items-center"><Shield className="h-5 w-5 mr-2 text-amber-600" />Accreditation Details</h3><div className="grid grid-cols-2 gap-4"><div><p><span className="text-gray-500">Accreditation No.:</span> {selectedCSO.accreditation_no || '—'}</p><p><span className="text-gray-500">Date of Issuance:</span> {selectedCSO.date_of_issuance ? new Date(selectedCSO.date_of_issuance).toLocaleDateString() : '—'}</p><p><span className="text-gray-500">Date of Expiration:</span> <span className={isExpiringSoon(selectedCSO.date_of_expiration) ? 'text-amber-600' : ''}>{selectedCSO.date_of_expiration ? new Date(selectedCSO.date_of_expiration).toLocaleDateString() : '—'}</span></p></div><div><p><span className="text-gray-500">Nature of Services:</span> {selectedCSO.nature_of_services || '—'}</p></div></div></div><div className="md:col-span-2 bg-white border rounded-xl p-5"><h3 className="font-semibold mb-4">Nature of Services</h3><div className="bg-gray-50 rounded-lg p-4"><p className="text-gray-700 whitespace-pre-line">{selectedCSO.nature_of_services || 'No services specified'}</p></div></div></div>
-            <div className="flex justify-end space-x-3 pt-6 border-t"><button onClick={() => { setShowViewModal(false); handleEdit(selectedCSO); }} className="px-5 py-2.5 bg-blue-600 text-white font-medium rounded-xl"><Edit className="h-4 w-4 inline mr-2" />Edit</button><button onClick={() => { setShowViewModal(false); openDeleteModal(selectedCSO); }} className="px-5 py-2.5 bg-red-600 text-white font-medium rounded-xl"><Trash2 className="h-4 w-4 inline mr-2" />Delete</button></div>
+          <div className="space-y-5">
+            <div className={`${ds.cardBase} p-6 bg-[#F1EADA]/50`}>
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                <div>
+                  <h2 className={`text-2xl font-bold text-[#2A241C] ${ds.display}`}>{selectedCSO.name_of_association}</h2>
+                  <div className="flex flex-wrap items-center mt-3 gap-2">
+                    <span className={`bg-white border border-[#DED2B4] px-2.5 py-1 rounded text-xs font-semibold ${ds.mono} text-[#5B5340]`}>No. {selectedCSO.no}</span>
+                    <StatusStamp status={selectedCSO.status} />
+                    <ScopeTag scope={selectedCSO.scope} />
+                  </div>
+                </div>
+                {selectedCSO.certificate_of_accreditation && (
+                  <a href={selectedCSO.certificate_of_accreditation} target="_blank" rel="noopener noreferrer" className={ds.btnSuccess + ' flex-shrink-0'}>
+                    <ExternalLink className="h-4 w-4" />View Certificate
+                  </a>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className={`${ds.cardBase} p-5`}>
+                <h3 className={`font-semibold mb-3.5 flex items-center gap-2 text-[#2A241C] text-sm uppercase tracking-wide ${ds.mono}`}>
+                  <User className="h-4 w-4 text-[#4A5F73]" />Contact Information
+                </h3>
+                <div className="space-y-2 text-sm">
+                  <p><span className="text-[#8B7F63]">Contact Person:</span> <span className="text-[#2A241C]">{selectedCSO.contact_person || '—'}</span></p>
+                  <p><span className="text-[#8B7F63]">Position:</span> <span className="text-[#2A241C]">{selectedCSO.position || '—'}</span></p>
+                  <p><span className="text-[#8B7F63]">Sex:</span> <span className="text-[#2A241C]">{selectedCSO.sex_female ? 'Female' : selectedCSO.sex_male ? 'Male' : '—'}</span></p>
+                  <p><span className="text-[#8B7F63]">Contact Number:</span> <span className={`text-[#2A241C] ${ds.mono}`}>{selectedCSO.contact_number || '—'}</span></p>
+                  <p><span className="text-[#8B7F63]">Email:</span> <span className="text-[#2A241C]">{selectedCSO.email_address || '—'}</span></p>
+                </div>
+              </div>
+              <div className={`${ds.cardBase} p-5`}>
+                <h3 className={`font-semibold mb-3.5 flex items-center gap-2 text-[#2A241C] text-sm uppercase tracking-wide ${ds.mono}`}>
+                  <MapPin className="h-4 w-4 text-[#3F6B4C]" />Location & Members
+                </h3>
+                <div className="space-y-2 text-sm">
+                  <p><span className="text-[#8B7F63]">Address:</span> <span className="text-[#2A241C]">{selectedCSO.address || '—'}</span></p>
+                  <p><span className="text-[#8B7F63]">Province:</span> <span className="text-[#2A241C]">{selectedCSO.province || '—'}</span></p>
+                  <p><span className="text-[#8B7F63]">Region:</span> <span className="text-[#2A241C]">{selectedCSO.region || 'MIMAROPA'}</span></p>
+                  <p><span className="text-[#8B7F63]">No. of Members:</span> <span className={`text-[#2A241C] ${ds.mono}`}>{selectedCSO.no_of_members || '0'}</span></p>
+                </div>
+              </div>
+              <div className={`md:col-span-2 ${ds.cardBase} p-5`}>
+                <h3 className={`font-semibold mb-3.5 flex items-center gap-2 text-[#2A241C] text-sm uppercase tracking-wide ${ds.mono}`}>
+                  <Shield className="h-4 w-4 text-[#9A6B1F]" />Accreditation Details
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                  <div className="space-y-2">
+                    <p><span className="text-[#8B7F63]">Accreditation No.:</span> <span className={`text-[#2A241C] ${ds.mono}`}>{selectedCSO.accreditation_no || '—'}</span></p>
+                    <p><span className="text-[#8B7F63]">Date of Issuance:</span> <span className={`text-[#2A241C] ${ds.mono}`}>{selectedCSO.date_of_issuance ? new Date(selectedCSO.date_of_issuance).toLocaleDateString() : '—'}</span></p>
+                    <p>
+                      <span className="text-[#8B7F63]">Date of Expiration:</span>{' '}
+                      <span className={`${ds.mono} ${isExpiringSoon(selectedCSO.date_of_expiration) ? 'text-[#9A6B1F] font-semibold' : 'text-[#2A241C]'}`}>
+                        {selectedCSO.date_of_expiration ? new Date(selectedCSO.date_of_expiration).toLocaleDateString() : '—'}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className={`md:col-span-2 ${ds.cardBase} p-5`}>
+                <h3 className={`font-semibold mb-3 text-[#2A241C] text-sm uppercase tracking-wide ${ds.mono}`}>Nature of Services</h3>
+                <div className="bg-[#F1EADA]/50 rounded-lg p-4 border border-[#EAE2CB]">
+                  <p className="text-[#3D362A] whitespace-pre-line text-sm leading-relaxed">{selectedCSO.nature_of_services || 'No services specified'}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-5 border-t border-[#DED2B4]">
+              <button onClick={() => { setShowViewModal(false); handleEdit(selectedCSO); }} className={ds.btnPrimary}><Edit className="h-4 w-4" />Edit</button>
+              <button onClick={() => { setShowViewModal(false); openDeleteModal(selectedCSO); }} className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#7C2E2E]/10 text-[#7C2E2E] border border-[#7C2E2E]/30 text-sm font-semibold rounded-md hover:bg-[#7C2E2E]/15 transition-colors duration-150"><Trash2 className="h-4 w-4" />Delete</button>
+            </div>
           </div>
         )}
       </Modal>
 
-      <Modal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} title="Confirm Deletion" size="sm"><div className="text-center py-6"><div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4"><Trash2 className="h-8 w-8 text-red-600" /></div><h3 className="text-xl font-semibold text-gray-900 mb-2">Delete CSO Record</h3><p className="text-gray-600 mb-6">Are you sure you want to delete <span className="font-semibold">{selectedCSO?.name_of_association}</span>? This action cannot be undone.</p><div className="flex justify-center space-x-3"><button onClick={() => setShowDeleteModal(false)} className="px-6 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50">Cancel</button><button onClick={handleDelete} className="px-6 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700">Delete Record</button></div></div></Modal>
+      {/* Delete Confirmation Modal */}
+      <Modal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} title="Confirm Deletion" size="sm">
+        <div className="text-center py-4">
+          <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-[#7C2E2E]/10 mb-4">
+            <Trash2 className="h-7 w-7 text-[#7C2E2E]" />
+          </div>
+          <h3 className={`text-xl font-semibold text-[#2A241C] mb-2 ${ds.display}`}>Delete CSO Record</h3>
+          <p className="text-[#6B6350] mb-6 text-sm">
+            Are you sure you want to delete <span className="font-semibold text-[#2A241C]">{selectedCSO?.name_of_association}</span>? This action cannot be undone.
+          </p>
+          <div className="flex justify-center gap-3">
+            <button onClick={() => setShowDeleteModal(false)} className={ds.btnSecondary}>Cancel</button>
+            <button onClick={handleDelete} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#7C2E2E] text-white text-sm font-semibold rounded-md shadow-sm hover:bg-[#692525] transition-colors duration-150">Delete Record</button>
+          </div>
+        </div>
+      </Modal>
 
+      {/* Import Modal */}
       <Modal isOpen={showImportModal} onClose={() => setShowImportModal(false)} title="Import from Excel" size="md">
-        <div className="space-y-6"><div className="bg-blue-50 rounded-xl p-5"><h4 className="font-semibold text-blue-800 mb-3">Import Instructions</h4><ul className="space-y-2 text-sm text-gray-700"><li className="flex items-start"><Check className="h-4 w-4 text-green-500 mr-2 mt-0.5" />Use the Excel export template for correct formatting</li><li className="flex items-start"><Check className="h-4 w-4 text-green-500 mr-2 mt-0.5" />Required columns: No. and Name of Association</li><li className="flex items-start"><Check className="h-4 w-4 text-green-500 mr-2 mt-0.5" />Existing records with matching No. will be updated</li></ul></div><div className="border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center">{importFile ? <div className="space-y-4"><div><FileText className="h-12 w-12 text-blue-500 mx-auto" /><p className="font-medium text-gray-900">{importFile.name}</p><p className="text-sm text-gray-500">{(importFile.size / 1024).toFixed(2)} KB</p></div>{importProgress > 0 && <div><div className="w-full bg-gray-200 rounded-full h-2.5"><div className="bg-green-600 h-2.5 rounded-full" style={{ width: `${importProgress}%` }} /></div><p className="text-sm text-gray-600 mt-2">Importing... {importProgress}%</p></div>}<div className="flex justify-center space-x-3"><button onClick={() => setImportFile(null)} className="px-4 py-2 text-gray-700 font-medium rounded-lg hover:bg-gray-100">Remove File</button><button onClick={handleImport} disabled={importProgress > 0} className="px-4 py-2 bg-green-600 text-white font-medium rounded-lg disabled:opacity-50">Start Import</button></div></div> : <div><Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" /><p className="text-gray-600 mb-2">Drag & drop your Excel file here</p><p className="text-sm text-gray-500 mb-6">or</p><label className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 cursor-pointer"><Upload className="h-5 w-5 mr-2" />Browse Files<input type="file" accept=".xlsx,.xls,.csv" onChange={(e) => { if (e.target.files && e.target.files[0]) setImportFile(e.target.files[0]); }} className="hidden" /></label><p className="text-xs text-gray-500 mt-4">Supports .xlsx, .xls, .csv files</p></div>}</div></div>
+        <div className="space-y-5">
+          <div className={`${ds.cardBase} p-5 bg-[#4A5F73]/[0.04]`}>
+            <h4 className={`font-semibold text-[#2A241C] mb-3 text-sm uppercase tracking-wide ${ds.mono}`}>Import Instructions</h4>
+            <ul className="space-y-2 text-sm text-[#3D362A]">
+              <li className="flex items-start gap-2"><Check className="h-4 w-4 text-[#3F6B4C] mt-0.5 flex-shrink-0" />Use the Excel export template for correct formatting</li>
+              <li className="flex items-start gap-2"><Check className="h-4 w-4 text-[#3F6B4C] mt-0.5 flex-shrink-0" />Required columns: No. and Name of Association</li>
+              <li className="flex items-start gap-2"><Check className="h-4 w-4 text-[#3F6B4C] mt-0.5 flex-shrink-0" />Existing records with matching No. will be updated</li>
+            </ul>
+          </div>
+          <div className="border-2 border-dashed border-[#D8CDAE] rounded-lg p-8 text-center bg-[#FBF8EF]">
+            {importFile ? (
+              <div className="space-y-4">
+                <div>
+                  <FileText className="h-10 w-10 text-[#4A5F73] mx-auto" strokeWidth={1.5} />
+                  <p className="font-medium text-[#2A241C] mt-2">{importFile.name}</p>
+                  <p className={`text-xs text-[#8B7F63] ${ds.mono}`}>{(importFile.size / 1024).toFixed(2)} KB</p>
+                </div>
+                {importProgress > 0 && (
+                  <div>
+                    <div className="w-full bg-[#E9E1CC] rounded-full h-2 overflow-hidden">
+                      <div className="bg-[#3F6B4C] h-2 rounded-full transition-all duration-300" style={{ width: `${importProgress}%` }} />
+                    </div>
+                    <p className={`text-xs text-[#8B7F63] mt-2 ${ds.mono}`}>Importing… {importProgress}%</p>
+                  </div>
+                )}
+                <div className="flex justify-center gap-3">
+                  <button onClick={() => setImportFile(null)} className={ds.btnSecondary + ' !px-4 !py-2 text-xs'}>Remove File</button>
+                  <button onClick={handleImport} disabled={importProgress > 0} className={ds.btnSuccess + ' !px-4 !py-2 text-xs'}>Start Import</button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <Upload className="h-10 w-10 text-[#AFA588] mx-auto mb-4" strokeWidth={1.5} />
+                <p className="text-[#3D362A] mb-1 text-sm">Drag & drop your Excel file here</p>
+                <p className="text-xs text-[#AFA588] mb-5">or</p>
+                <label className={ds.btnPrimary + ' cursor-pointer'}>
+                  <Upload className="h-4 w-4" />Browse Files
+                  <input type="file" accept=".xlsx,.xls,.csv" onChange={(e) => { if (e.target.files && e.target.files[0]) setImportFile(e.target.files[0]); }} className="hidden" />
+                </label>
+                <p className="text-[11px] text-[#AFA588] mt-4">Supports .xlsx, .xls, .csv files</p>
+              </div>
+            )}
+          </div>
+        </div>
       </Modal>
     </div>
   );

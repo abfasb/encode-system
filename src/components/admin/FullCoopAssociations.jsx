@@ -41,10 +41,83 @@ import {
   FiBook,
   FiBriefcase,
   FiDollarSign,
+  FiSliders,
+  FiLayers,
 } from "react-icons/fi";
 import { collection, getDocs, doc, setDoc, updateDoc, addDoc } from "firebase/firestore";
 import { db } from "../../config/firebase";
 import * as XLSX from 'xlsx';
+
+/* =========================================================================
+   DESIGN SYSTEM
+   Centralized tokens & style helpers used throughout this file so every
+   surface (cards, inputs, buttons, badges, tables, modals) stays visually
+   consistent. Nothing here changes data/behavior — presentation only.
+   ========================================================================= */
+
+const ds = {
+  page: "min-h-screen bg-slate-50",
+  card: "bg-white rounded-2xl border border-slate-200 shadow-sm",
+  cardHeader: "px-6 py-5 border-b border-slate-100",
+  sectionTitle: "text-[15px] font-semibold text-slate-900 tracking-tight",
+  sectionSubtitle: "text-sm text-slate-500 mt-0.5",
+  label: "block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5",
+  input:
+    "w-full text-slate-900 placeholder-slate-400 px-3.5 py-2.5 border border-slate-200 rounded-lg text-sm bg-white transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-400",
+  select:
+    "w-full text-slate-900 px-3.5 py-2.5 border border-slate-200 rounded-lg text-sm bg-white transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-400 appearance-none",
+  checkbox: "h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/40 cursor-pointer",
+  btnPrimary:
+    "inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 shadow-sm hover:shadow transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-emerald-600",
+  btnSecondary:
+    "inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 active:bg-slate-100 shadow-sm transition-all duration-150 disabled:opacity-50",
+  btnDanger:
+    "inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 active:bg-rose-800 shadow-sm transition-all duration-150",
+  btnGhost:
+    "inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 active:bg-slate-200 transition-all duration-150",
+  btnIcon:
+    "p-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-all duration-150",
+  modalOverlay:
+    "fixed inset-0 bg-slate-900/50 backdrop-blur-[2px] flex items-center justify-center p-4 z-50 animate-fadeIn",
+  modalShell: "bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 w-full animate-slideUp",
+  modalHeader: "px-7 py-5 border-b border-slate-100 flex items-center justify-between rounded-t-2xl bg-white sticky top-0 z-10",
+  modalFooter: "px-7 py-5 border-t border-slate-100 bg-slate-50/60 rounded-b-2xl sticky bottom-0",
+};
+
+const Badge = ({ tone = "neutral", children, icon: Icon }) => {
+  const tones = {
+    neutral: "bg-slate-100 text-slate-600 border-slate-200",
+    success: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    danger: "bg-rose-50 text-rose-600 border-rose-200",
+    warning: "bg-amber-50 text-amber-700 border-amber-200",
+    info: "bg-blue-50 text-blue-700 border-blue-200",
+  };
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${tones[tone]}`}>
+      {Icon && <Icon className="w-3 h-3" />}
+      {children}
+    </span>
+  );
+};
+
+const SectionLegend = ({ children }) => (
+  <h4 className="text-sm font-bold text-slate-900 mb-5 pb-3 border-b border-slate-100 flex items-center gap-2">
+    {children}
+  </h4>
+);
+
+const FieldLabel = ({ children, required }) => (
+  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">
+    {children} {required && <span className="text-rose-500 normal-case font-medium">*</span>}
+  </label>
+);
+
+const ViewField = ({ label, value }) => (
+  <div>
+    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">{label}</p>
+    <p className="text-sm text-slate-900 font-medium">{value || "—"}</p>
+  </div>
+);
 
 // ---------- Helper: Normalize string (trim, title case) ----------
 const normalizeString = (str) => {
@@ -127,11 +200,11 @@ const useDebounce = (value, delay) => {
 
 const LoadingSpinner = ({ message = "Loading..." }) => (
   <div className="flex flex-col items-center justify-center p-8">
-    <div className="relative">
-      <div className="w-16 h-16 border-4 border-green-200 rounded-full"></div>
-      <div className="absolute top-0 left-0 w-16 h-16 border-4 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+    <div className="relative w-14 h-14">
+      <div className="absolute inset-0 border-4 border-slate-100 rounded-full"></div>
+      <div className="absolute inset-0 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
     </div>
-    <p className="mt-4 text-gray-600">{message}</p>
+    <p className="mt-4 text-sm text-slate-500 font-medium">{message}</p>
   </div>
 );
 
@@ -169,142 +242,152 @@ const MemoizedTableRow = React.memo(({
     openViewModal(item);
   }, [openViewModal, item]);
 
-  const renderCheck = (value) => value ? "✓" : "";
+  const renderCheck = (value) =>
+    value ? (
+      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-50 text-emerald-600">
+        <FiCheckCircle className="w-3.5 h-3.5" />
+      </span>
+    ) : (
+      <span className="text-slate-300">—</span>
+    );
 
   const renderAccreditationPeriods = () => {
     if (item.accreditationPeriods && item.accreditationPeriods.length > 0) {
       return (
         <div className="text-xs space-y-1">
           {item.accreditationPeriods.map((period, idx) => (
-            <div key={idx}>
-              {formatDate(period.date_accredited)} → {formatDate(period.date_expiration)}
+            <div key={idx} className="text-slate-600 whitespace-nowrap">
+              {formatDate(period.date_accredited)} <span className="text-slate-300">→</span> {formatDate(period.date_expiration)}
             </div>
           ))}
         </div>
       );
     }
-    return <span className="text-gray-400">—</span>;
+    return <span className="text-slate-300">—</span>;
   };
 
   return (
     <tr
       onClick={handleViewClick}
-      className="hover:bg-gradient-to-r hover:from-green-50 hover:to-emerald-50 transition-all duration-200 cursor-pointer"
+      className="group hover:bg-emerald-50/40 transition-colors duration-150 cursor-pointer"
     >
-      <td className="px-4 py-3 whitespace-nowrap text-center text-sm font-bold text-gray-900 border-r border-gray-200">
+      <td className="px-4 py-3.5 whitespace-nowrap text-center text-xs font-semibold text-slate-400 border-r border-slate-100">
         {index}
       </td>
-      <td className="px-4 py-3 border-r border-gray-200 min-w-48">
-        <div className="text-sm font-semibold text-gray-900 truncate" title={item.name || ""}>
+      <td className="px-4 py-3.5 border-r border-slate-100 min-w-48">
+        <div className="text-sm font-semibold text-slate-900 truncate" title={item.name || ""}>
           {item.name || ""}
         </div>
-        <div className="text-xs text-gray-500">{item.province} • {item.municipality}</div>
+        <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
+          <FiMapPin className="w-3 h-3" />
+          {item.province} • {item.municipality}
+        </div>
       </td>
-      <td className="px-4 py-3 border-r border-gray-200 min-w-48">
-        <div className="text-sm text-gray-900 truncate" title={item.address || ""}>
+      <td className="px-4 py-3.5 border-r border-slate-100 min-w-48">
+        <div className="text-sm text-slate-600 truncate" title={item.address || ""}>
           {item.address || ""}
         </div>
       </td>
-      <td className={`px-4 py-3 whitespace-nowrap border-r border-gray-200 min-w-40 ${isRegistrationEmpty(item.registration_type) ? 'bg-yellow-100' : ''}`}>
-        <div className="text-sm text-gray-900">{item.registration_type || "Not specified"}</div>
+      <td className={`px-4 py-3.5 whitespace-nowrap border-r border-slate-100 min-w-40 ${isRegistrationEmpty(item.registration_type) ? 'bg-amber-50/60' : ''}`}>
+        <div className="text-sm text-slate-700">{item.registration_type || <span className="text-amber-600 text-xs font-medium">Not specified</span>}</div>
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 border-r border-gray-200 min-w-40 truncate" title={item.president || ""}>
+      <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-700 border-r border-slate-100 min-w-40 truncate" title={item.president || ""}>
         {item.president || ""}
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 border-r border-gray-200 min-w-32">
+      <td className="px-4 py-3.5 whitespace-nowrap text-sm border-r border-slate-100 min-w-32">
         {item.contact_number ? (
-          <a href={`tel:${item.contact_number}`} className="text-green-600 hover:text-green-800 font-medium">
+          <a href={`tel:${item.contact_number}`} onClick={(e) => e.stopPropagation()} className="text-emerald-600 hover:text-emerald-800 font-medium">
             {item.contact_number}
           </a>
         ) : (
-          <span className="text-gray-400">Not provided</span>
+          <span className="text-slate-300">Not provided</span>
         )}
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-200">
+      <td className="px-4 py-3.5 whitespace-nowrap text-center text-sm text-slate-700 border-r border-slate-100">
         <span className="font-semibold">{item.members?.male || ""}</span>
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-200">
+      <td className="px-4 py-3.5 whitespace-nowrap text-center text-sm text-slate-700 border-r border-slate-100">
         <span className="font-semibold">{item.members?.female || ""}</span>
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-200">
+      <td className="px-4 py-3.5 whitespace-nowrap text-center text-sm text-slate-700 border-r border-slate-100">
         <span className="font-semibold">{item.members?.senior_citizen || ""}</span>
       </td>
-      <td className={`px-4 py-3 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-200 ${isDifferentlyAbledEmpty(item.members) ? 'bg-yellow-100' : ''}`}>
+      <td className={`px-4 py-3.5 whitespace-nowrap text-center text-sm text-slate-700 border-r border-slate-100 ${isDifferentlyAbledEmpty(item.members) ? 'bg-amber-50/60' : ''}`}>
         <span className="font-semibold">
           {Number(item.members?.differently_abled) === 0 ? "" : item.members?.differently_abled}
         </span>
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-200">
+      <td className="px-4 py-3.5 whitespace-nowrap text-center text-sm text-slate-700 border-r border-slate-100">
         <span className="font-semibold">{item.members?.young_farmer || ""}</span>
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-200">
+      <td className="px-4 py-3.5 whitespace-nowrap text-center text-sm text-slate-700 border-r border-slate-100">
         <span className="font-semibold">{item.members?.ips || ""}</span>
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 border-r border-gray-200 min-w-32 truncate" title={item.commodity || ""}>
-        {item.commodity || "Not specified"}
+      <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-700 border-r border-slate-100 min-w-32 truncate" title={item.commodity || ""}>
+        {item.commodity || <span className="text-slate-300">Not specified</span>}
       </td>
 
       {/* Group Categories checkmarks */}
-      <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-200">
+      <td className="px-4 py-3.5 whitespace-nowrap text-center border-r border-slate-100">
         {renderCheck(item.groupCategories?.womenLed)}
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-200">
+      <td className="px-4 py-3.5 whitespace-nowrap text-center border-r border-slate-100">
         {renderCheck(item.groupCategories?.menLed)}
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-200">
+      <td className="px-4 py-3.5 whitespace-nowrap text-center border-r border-slate-100">
         {renderCheck(item.groupCategories?.seniorCitizensGroup)}
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-200">
+      <td className="px-4 py-3.5 whitespace-nowrap text-center border-r border-slate-100">
         {renderCheck(item.groupCategories?.personsWithDisabilitiesGroup)}
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-200">
+      <td className="px-4 py-3.5 whitespace-nowrap text-center border-r border-slate-100">
         {renderCheck(item.groupCategories?.youngFarmersOrganization)}
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-center text-sm text-gray-900 border-r border-gray-200">
+      <td className="px-4 py-3.5 whitespace-nowrap text-center border-r border-slate-100">
         {renderCheck(item.groupCategories?.indigenousPeoplesAssociation)}
       </td>
 
       {/* Intervention columns */}
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 border-r border-gray-200 min-w-32 truncate" title={item.specificIntervention || ""}>
-        {item.specificIntervention || "-"}
+      <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-700 border-r border-slate-100 min-w-32 truncate" title={item.specificIntervention || ""}>
+        {item.specificIntervention || <span className="text-slate-300">—</span>}
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 border-r border-gray-200 min-w-24">
-        {item.interventionAmount || "-"}
+      <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-700 border-r border-slate-100 min-w-24">
+        {item.interventionAmount || <span className="text-slate-300">—</span>}
       </td>
 
       {/* Accreditation Periods column */}
-      <td className="px-4 py-3 text-sm text-gray-900 border-r border-gray-200 min-w-48">
+      <td className="px-4 py-3.5 text-sm text-slate-700 border-r border-slate-100 min-w-48">
         {renderAccreditationPeriods()}
       </td>
 
-      <td className="px-4 py-3 whitespace-nowrap text-center border-r border-gray-200">
+      <td className="px-4 py-3.5 whitespace-nowrap text-center border-r border-slate-100">
         {item.status === "Active" && (
           <div className="flex items-center justify-center">
-            <div className="w-6 h-6 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center shadow-md">
-              <FiCheckCircle className="w-3.5 h-3.5 text-white" />
-            </div>
+            <span className="inline-flex items-center justify-center w-6 h-6 bg-emerald-100 rounded-full">
+              <FiCheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+            </span>
           </div>
         )}
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-center border-r border-gray-200">
+      <td className="px-4 py-3.5 whitespace-nowrap text-center border-r border-slate-100">
         {item.status === "Inactive" && (
           <div className="flex items-center justify-center">
-            <div className="w-6 h-6 bg-red-100 border border-red-300 rounded-full flex items-center justify-center">
-              <FiXCircle className="w-3.5 h-3.5 text-red-500" />
-            </div>
+            <span className="inline-flex items-center justify-center w-6 h-6 bg-rose-100 rounded-full">
+              <FiXCircle className="w-3.5 h-3.5 text-rose-500" />
+            </span>
           </div>
         )}
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-center">
-        <div className="flex items-center justify-center space-x-2">
-          <button onClick={handleViewClick} className="p-2 text-gray-600 hover:bg-gray-100 rounded-xl transition-all duration-200 hover:scale-105" title="View Details">
-            <FiEye className="w-4.5 h-4.5" />
+      <td className="px-4 py-3.5 whitespace-nowrap text-center">
+        <div className="flex items-center justify-center gap-1 opacity-70 group-hover:opacity-100 transition-opacity duration-150">
+          <button onClick={handleViewClick} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-all duration-150" title="View Details">
+            <FiEye className="w-4 h-4" />
           </button>
-          <button onClick={handleEditClick} className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all duration-200 hover:scale-105" title="Edit Association">
-            <FiEdit2 className="w-4.5 h-4.5" />
+          <button onClick={handleEditClick} className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-all duration-150" title="Edit Association">
+            <FiEdit2 className="w-4 h-4" />
           </button>
-          <button onClick={handleDeleteClick} className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200 hover:scale-105" title="Delete Association">
-            <FiTrash2 className="w-4.5 h-4.5" />
+          <button onClick={handleDeleteClick} className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-all duration-150" title="Delete Association">
+            <FiTrash2 className="w-4 h-4" />
           </button>
         </div>
       </td>
@@ -326,14 +409,14 @@ const Pagination = ({ currentPage, totalPages, itemsPerPage, totalItems, onPageC
   const pageNumbers = getPageNumbers();
 
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-3 bg-white border-t border-gray-200">
-      <div className="flex items-center space-x-4 mb-4 sm:mb-0">
-        <div className="flex items-center space-x-2">
-          <span className="text-sm text-gray-700">Rows per page:</span>
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-5 md:px-6 py-4 bg-white border-t border-slate-100">
+      <div className="flex flex-col sm:flex-row items-center gap-4">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-slate-500">Rows per page</span>
           <select
             value={itemsPerPage}
             onChange={(e) => onItemsPerPageChange(parseInt(e.target.value))}
-            className="text-sm border text-black border-gray-300 rounded-lg px-3 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
+            className="text-sm text-slate-700 border border-slate-200 rounded-lg pl-3 pr-8 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
           >
             <option value={20}>20</option>
             <option value={50}>50</option>
@@ -342,26 +425,26 @@ const Pagination = ({ currentPage, totalPages, itemsPerPage, totalItems, onPageC
             <option value={500}>500</option>
           </select>
         </div>
-        <span className="text-sm text-gray-700">
-          Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, totalItems)} of {totalItems} entries
+        <span className="text-xs text-slate-500">
+          Showing <span className="font-semibold text-slate-700">{((currentPage - 1) * itemsPerPage) + 1}</span> to <span className="font-semibold text-slate-700">{Math.min(currentPage * itemsPerPage, totalItems)}</span> of <span className="font-semibold text-slate-700">{totalItems}</span> entries
         </span>
       </div>
-      <div className="flex items-center space-x-1">
-        <button onClick={() => onPageChange(1)} disabled={currentPage === 1} className={`p-2 rounded-lg ${currentPage === 1 ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'}`}>
+      <div className="flex items-center gap-1">
+        <button onClick={() => onPageChange(1)} disabled={currentPage === 1} className={`p-2 rounded-lg transition-colors duration-150 ${currentPage === 1 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`}>
           <FiChevronLeft className="w-4 h-4" /><FiChevronLeft className="w-4 h-4 -ml-3" />
         </button>
-        <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} className={`p-2 rounded-lg ${currentPage === 1 ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'}`}>
+        <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} className={`p-2 rounded-lg transition-colors duration-150 ${currentPage === 1 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`}>
           <FiChevronLeft className="w-4 h-4" />
         </button>
         {pageNumbers.map(number => (
-          <button key={number} onClick={() => onPageChange(number)} className={`w-10 h-10 flex items-center justify-center rounded-lg text-sm font-medium ${currentPage === number ? 'bg-green-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}>
+          <button key={number} onClick={() => onPageChange(number)} className={`min-w-[2.25rem] h-9 px-2 flex items-center justify-center rounded-lg text-sm font-semibold transition-colors duration-150 ${currentPage === number ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
             {number}
           </button>
         ))}
-        <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages} className={`p-2 rounded-lg ${currentPage === totalPages ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'}`}>
+        <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages} className={`p-2 rounded-lg transition-colors duration-150 ${currentPage === totalPages ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`}>
           <FiChevronRight className="w-4 h-4" />
         </button>
-        <button onClick={() => onPageChange(totalPages)} disabled={currentPage === totalPages} className={`p-2 rounded-lg ${currentPage === totalPages ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'}`}>
+        <button onClick={() => onPageChange(totalPages)} disabled={currentPage === totalPages} className={`p-2 rounded-lg transition-colors duration-150 ${currentPage === totalPages ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`}>
           <FiChevronRight className="w-4 h-4" /><FiChevronRight className="w-4 h-4 -ml-3" />
         </button>
       </div>
@@ -854,8 +937,8 @@ export default function FullCoopAssociations() {
   };
 
   const getSortIcon = (key) => {
-    if (sortConfig.key !== key) return <FiChevronUp className="opacity-30" />;
-    return sortConfig.direction === 'ascending' ? <FiChevronUp className="text-green-600" /> : <FiChevronDown className="text-green-600" />;
+    if (sortConfig.key !== key) return <FiChevronUp className="opacity-20 w-3.5 h-3.5" />;
+    return sortConfig.direction === 'ascending' ? <FiChevronUp className="text-emerald-600 w-3.5 h-3.5" /> : <FiChevronDown className="text-emerald-600 w-3.5 h-3.5" />;
   };
 
   const getOriginalDaEncodeRecord = (groupedItem) => {
@@ -1483,35 +1566,44 @@ export default function FullCoopAssociations() {
 
   if (loading) {
     return (
-      <div className="p-6 bg-gradient-to-br from-gray-50 to-gray-100 flex-1 overflow-auto min-h-screen flex items-center justify-center">
+      <div className={`p-6 ${ds.page} flex-1 overflow-auto flex items-center justify-center`}>
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-14 w-14 border-t-2 border-b-2 border-green-600 mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading associations data...</p>
+          <div className="relative w-14 h-14 mx-auto mb-4">
+            <div className="absolute inset-0 border-4 border-slate-100 rounded-full"></div>
+            <div className="absolute inset-0 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+          </div>
+          <p className="text-slate-500 font-medium text-sm">Loading associations data…</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-4 md:p-6 bg-gradient-to-br from-gray-50 to-gray-100 flex-1 overflow-auto min-h-screen">
+    <div className={`p-4 md:p-8 ${ds.page} flex-1 overflow-auto`}>
       {/* Header */}
-      <div className="mb-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="mb-7">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-green-800 to-green-600 bg-clip-text text-transparent mb-2">
-              Farmers' Cooperative And Associations (FCAs)
+            <div className="flex items-center gap-2 mb-2">
+              <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-600 text-white">
+                <FiLayers className="w-4 h-4" />
+              </span>
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">FCA Registry</p>
+            </div>
+            <h1 className="text-2xl md:text-[28px] font-bold text-slate-900 tracking-tight mb-1.5">
+              Farmers' Cooperative &amp; Associations
             </h1>
-            <p className="text-gray-600">Complete list of all agricultural associations (including RCEF accredited and CSO accredited) with advanced filtering</p>
+            <p className="text-sm text-slate-500 max-w-2xl">Complete registry of agricultural associations — including RCEF and CSO accredited groups — with advanced filtering and reporting.</p>
           </div>
-          <div className="flex gap-3">
-            <button onClick={() => fileInputRef.current?.click()} className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-medium hover:from-blue-700 hover:to-indigo-700 transition-all duration-300 shadow-lg hover:shadow-xl flex items-center justify-center transform hover:-translate-y-0.5">
-              <FiUpload className="mr-2 text-lg" /> Import Excel
+          <div className="flex flex-wrap gap-2.5">
+            <button onClick={() => fileInputRef.current?.click()} className={ds.btnSecondary}>
+              <FiUpload className="text-base" /> Import Excel
             </button>
-            <button onClick={openAddModal} className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-medium hover:from-green-700 hover:to-emerald-700 transition-all duration-300 shadow-lg hover:shadow-xl flex items-center justify-center transform hover:-translate-y-0.5">
-              <FiPlus className="mr-2 text-lg" /> Add New Association
+            <button onClick={openAddModal} className={ds.btnPrimary}>
+              <FiPlus className="text-base" /> Add Association
             </button>
-            <button onClick={fetchData} className="px-4 py-3 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-xl font-medium hover:from-gray-700 hover:to-gray-800 transition-all duration-300 shadow-lg hover:shadow-xl flex items-center justify-center transform hover:-translate-y-0.5" title="Refresh Data">
-              <FiRefreshCw className="text-lg" />
+            <button onClick={fetchData} className={`${ds.btnSecondary} px-3`} title="Refresh Data">
+              <FiRefreshCw className="text-base" />
             </button>
           </div>
         </div>
@@ -1520,85 +1612,87 @@ export default function FullCoopAssociations() {
       <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelUpload} className="hidden" />
 
       {/* Action Bar with Total Intervention Amount */}
-      <div className="mb-6 bg-white p-5 rounded-2xl shadow-lg border border-gray-200">
+      <div className={`mb-5 ${ds.card} p-5 md:p-6`}>
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-gray-800 mb-1 flex items-center">
-              <FiFilter className="mr-2 text-green-600" />
-              Data Controls & Export
-            </h3>
-            <p className="text-sm text-gray-600">Filter, search, import, and export your association data</p>
+            <h3 className={ds.sectionTitle}>Data controls &amp; export</h3>
+            <p className={ds.sectionSubtitle}>Filter, search, import, and export your association data.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-xl px-4 py-2 border border-amber-200 flex items-center gap-2">
-              <FiDollarSign className="text-amber-600 text-lg" />
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-3 rounded-xl px-4 py-2.5 border border-amber-200 bg-amber-50/60">
+              <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-amber-100 text-amber-700">
+                <FiDollarSign className="text-base" />
+              </span>
               <div>
-                <span className="text-xs text-gray-600 block">Total Intervention Amount</span>
-                <span className="font-bold text-amber-800">
+                <span className="text-[11px] text-amber-700/80 font-medium block leading-none mb-1">Total intervention amount</span>
+                <span className="font-bold text-amber-800 text-sm leading-none">
                   {totalInterventionAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
-            <button onClick={downloadSampleTemplate} className="px-4 py-2.5 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all duration-200 flex items-center shadow-sm hover:shadow">
-              <FiFileText className="mr-2" /> Download Template
+            <button onClick={downloadSampleTemplate} className={ds.btnSecondary}>
+              <FiFileText className="text-base" /> Template
             </button>
-            <button onClick={printTable} className="px-4 py-2.5 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all duration-200 flex items-center shadow-sm hover:shadow">
-              <FiPrinter className="mr-2" /> Print Report
+            <button onClick={printTable} className={ds.btnSecondary}>
+              <FiPrinter className="text-base" /> Print
             </button>
-            <button onClick={exportToExcel} className="px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl text-sm font-medium hover:from-green-700 hover:to-emerald-700 transition-all duration-200 flex items-center shadow-lg hover:shadow-xl">
-              <FiDownload className="mr-2" /> Export to Excel
+            <button onClick={exportToExcel} className={ds.btnPrimary}>
+              <FiDownload className="text-base" /> Export
             </button>
           </div>
         </div>
       </div>
 
       {/* Filter Section */}
-      <div className="bg-white p-5 md:p-6 rounded-2xl shadow-lg border border-gray-200 mb-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-5">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-1">Advanced Filters</h3>
-            <p className="text-sm text-gray-600">Refine results using multiple criteria</p>
+      <div className={`${ds.card} p-5 md:p-6 mb-6`}>
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-5 gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-100 text-slate-500">
+              <FiSliders className="w-4 h-4" />
+            </span>
+            <div>
+              <h3 className={ds.sectionTitle}>Advanced filters</h3>
+              <p className={ds.sectionSubtitle}>Refine results using multiple criteria.</p>
+            </div>
           </div>
-          <div className="flex space-x-2 mt-3 md:mt-0">
-            <button onClick={clearFilters} className="px-4 py-2.5 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all duration-200">
-              Clear All Filters
-            </button>
-          </div>
+          <button onClick={clearFilters} className={ds.btnGhost}>
+            Clear all filters
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Province</label>
-            <select value={filters.province} onChange={(e) => handleFilterChange("province", e.target.value)} className="w-full text-black px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm bg-white">
+            <FieldLabel>Province</FieldLabel>
+            <select value={filters.province} onChange={(e) => handleFilterChange("province", e.target.value)} className={ds.select}>
               <option value="">All Provinces</option>
               {uniqueProvinces.map((p, i) => <option key={i} value={p}>{p}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Municipality</label>
-            <select value={filters.municipality} onChange={(e) => handleFilterChange("municipality", e.target.value)} className="w-full text-black px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm bg-white" disabled={!filters.province}>
+            <FieldLabel>Municipality</FieldLabel>
+            <select value={filters.municipality} onChange={(e) => handleFilterChange("municipality", e.target.value)} className={ds.select} disabled={!filters.province}>
               <option value="">All Municipalities</option>
               {filters.province ? availableMunicipalities.map((m, i) => <option key={i} value={m}>{m}</option>) : uniqueMunicipalities.map((m, i) => <option key={i} value={m}>{m}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-            <select value={filters.status} onChange={(e) => handleFilterChange("status", e.target.value)} className="w-full text-black px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm bg-white">
+            <FieldLabel>Status</FieldLabel>
+            <select value={filters.status} onChange={(e) => handleFilterChange("status", e.target.value)} className={ds.select}>
               <option value="">All Status</option>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Registration Type</label>
-            <select value={filters.registrationType} onChange={(e) => handleFilterChange("registrationType", e.target.value)} className="w-full text-black px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm bg-white">
+            <FieldLabel>Registration Type</FieldLabel>
+            <select value={filters.registrationType} onChange={(e) => handleFilterChange("registrationType", e.target.value)} className={ds.select}>
               <option value="">All Types</option>
               {uniqueRegistrationTypes.map((t, i) => <option key={i} value={t}>{t}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Commodity</label>
-            <select value={filters.commodity} onChange={(e) => handleFilterChange("commodity", e.target.value)} className="w-full text-black px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm bg-white">
+            <FieldLabel>Commodity</FieldLabel>
+            <select value={filters.commodity} onChange={(e) => handleFilterChange("commodity", e.target.value)} className={ds.select}>
               <option value="">All Commodities</option>
               {uniqueCommodities.map((c, i) => <option key={i} value={c}>{c}</option>)}
             </select>
@@ -1606,96 +1700,88 @@ export default function FullCoopAssociations() {
         </div>
 
         {/* Group Category Filters */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-          <label className="flex items-center space-x-2 text-sm text-gray-700">
-            <input type="checkbox" checked={filters.womenLed} onChange={(e) => handleFilterChange("womenLed", e.target.checked)} className="rounded text-green-600 focus:ring-green-500" />
-            <span>Women-Led</span>
-          </label>
-          <label className="flex items-center space-x-2 text-sm text-gray-700">
-            <input type="checkbox" checked={filters.menLed} onChange={(e) => handleFilterChange("menLed", e.target.checked)} className="rounded text-green-600 focus:ring-green-500" />
-            <span>Men-Led</span>
-          </label>
-          <label className="flex items-center space-x-2 text-sm text-gray-700">
-            <input type="checkbox" checked={filters.seniorCitizensGroup} onChange={(e) => handleFilterChange("seniorCitizensGroup", e.target.checked)} className="rounded text-green-600 focus:ring-green-500" />
-            <span>Senior Citizens Group</span>
-          </label>
-          <label className="flex items-center space-x-2 text-sm text-gray-700">
-            <input type="checkbox" checked={filters.personsWithDisabilitiesGroup} onChange={(e) => handleFilterChange("personsWithDisabilitiesGroup", e.target.checked)} className="rounded text-green-600 focus:ring-green-500" />
-            <span>PWD Group</span>
-          </label>
-          <label className="flex items-center space-x-2 text-sm text-gray-700">
-            <input type="checkbox" checked={filters.youngFarmersOrganization} onChange={(e) => handleFilterChange("youngFarmersOrganization", e.target.checked)} className="rounded text-green-600 focus:ring-green-500" />
-            <span>Young Farmers Organization</span>
-          </label>
-          <label className="flex items-center space-x-2 text-sm text-gray-700">
-            <input type="checkbox" checked={filters.indigenousPeoplesAssociation} onChange={(e) => handleFilterChange("indigenousPeoplesAssociation", e.target.checked)} className="rounded text-green-600 focus:ring-green-500" />
-            <span>IP Association</span>
-          </label>
+        <div className="flex flex-wrap gap-2 mb-5 pb-5 border-b border-slate-100">
+          {[
+            ["womenLed", "Women-Led"],
+            ["menLed", "Men-Led"],
+            ["seniorCitizensGroup", "Senior Citizens Group"],
+            ["personsWithDisabilitiesGroup", "PWD Group"],
+            ["youngFarmersOrganization", "Young Farmers Organization"],
+            ["indigenousPeoplesAssociation", "IP Association"],
+          ].map(([key, label]) => (
+            <label key={key} className={`inline-flex items-center gap-2 text-sm px-3.5 py-2 rounded-lg border cursor-pointer transition-colors duration-150 ${filters[key] ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+              <input type="checkbox" checked={filters[key]} onChange={(e) => handleFilterChange(key, e.target.checked)} className={ds.checkbox} />
+              <span className="font-medium">{label}</span>
+            </label>
+          ))}
         </div>
 
         <div className="relative">
           <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-            <FiSearch className="h-5 w-5 text-gray-400" />
+            <FiSearch className="h-4 w-4 text-slate-400" />
           </div>
-          <input type="text" placeholder="Search associations by name, president, address, commodity, or municipality..." value={filters.searchTerm} onChange={(e) => handleFilterChange("searchTerm", e.target.value)} className="w-full text-black pl-12 pr-4 py-3 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white" />
+          <input type="text" placeholder="Search associations by name, president, address, commodity, or municipality…" value={filters.searchTerm} onChange={(e) => handleFilterChange("searchTerm", e.target.value)} className={`${ds.input} pl-11`} />
         </div>
       </div>
 
       {/* Data Table */}
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden mb-8">
-        <div className="px-5 md:px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800">Associations Database</h3>
-              <p className="text-sm text-gray-600">{isFiltering ? "Filtering..." : `${filteredData.length} association${filteredData.length !== 1 ? 's' : ''} found • Total: ${data.length} associations`}</p>
-            </div>
-            <div className="mt-2 sm:mt-0 flex items-center">
-              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-lg">Page {currentPage} of {totalPages}</span>
-            </div>
+      <div className={`${ds.card} overflow-hidden mb-8`}>
+        <div className="px-5 md:px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 className={ds.sectionTitle}>Associations database</h3>
+            <p className={ds.sectionSubtitle}>{isFiltering ? "Filtering…" : `${filteredData.length} association${filteredData.length !== 1 ? 's' : ''} found · Total ${data.length} associations`}</p>
           </div>
+          <Badge tone="neutral">Page {currentPage} of {totalPages || 1}</Badge>
         </div>
 
         <div className="overflow-x-auto">
-          <table ref={tableRef} className="min-w-full divide-y divide-gray-200 text-sm" style={{ minWidth: '2900px' }}>
-            <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+          <table ref={tableRef} className="min-w-full divide-y divide-slate-100 text-sm" style={{ minWidth: '2900px' }}>
+            <thead className="bg-slate-50/80">
               <tr>
-                <th rowSpan="2" className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-16">No.</th>
-                <th rowSpan="2" className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 min-w-48">Association Name</th>
-                <th rowSpan="2" className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 min-w-48">Complete Address</th>
-                <th rowSpan="2" className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 min-w-40">Registration Type</th>
-                <th rowSpan="2" className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 min-w-40">President</th>
-                <th rowSpan="2" className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 min-w-32">Contact No.</th>
-                <th colSpan="6" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">Members Breakdown</th>
-                <th rowSpan="2" className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 min-w-32">Commodity</th>
-                <th colSpan="6" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">Group Categories</th>
-                <th colSpan="2" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">Year</th>
-                <th rowSpan="2" className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 min-w-40">Accreditation Periods</th>
-                <th colSpan="2" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
-                <th rowSpan="2" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider min-w-28">Actions</th>
+                <th rowSpan="2" className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 w-16">No.</th>
+                <th rowSpan="2" className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 min-w-48">Association Name</th>
+                <th rowSpan="2" className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 min-w-48">Complete Address</th>
+                <th rowSpan="2" className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 min-w-40">Registration Type</th>
+                <th rowSpan="2" className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 min-w-40">President</th>
+                <th rowSpan="2" className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 min-w-32">Contact No.</th>
+                <th colSpan="6" className="px-4 py-3 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100">Members Breakdown</th>
+                <th rowSpan="2" className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 min-w-32">Commodity</th>
+                <th colSpan="6" className="px-4 py-3 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100">Group Categories</th>
+                <th colSpan="2" className="px-4 py-3 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100">Year</th>
+                <th rowSpan="2" className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 min-w-40">Accreditation Periods</th>
+                <th colSpan="2" className="px-4 py-3 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                <th rowSpan="2" className="px-4 py-3 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wide min-w-28">Actions</th>
               </tr>
               <tr>
-                <th onClick={() => requestSort('members.male')} className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-24 hover:bg-gray-200 cursor-pointer"><div className="flex items-center justify-between">Male{getSortIcon('members.male')}</div></th>
-                <th onClick={() => requestSort('members.female')} className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-24 hover:bg-gray-200 cursor-pointer"><div className="flex items-center justify-between">Female{getSortIcon('members.female')}</div></th>
-                <th onClick={() => requestSort('members.senior_citizen')} className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-28 hover:bg-gray-200 cursor-pointer"><div className="flex items-center justify-between">Senior Citizen{getSortIcon('members.senior_citizen')}</div></th>
-                <th onClick={() => requestSort('members.differently_abled')} className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-32 hover:bg-gray-200 cursor-pointer"><div className="flex items-center justify-between">Differently-abled{getSortIcon('members.differently_abled')}</div></th>
-                <th onClick={() => requestSort('members.young_farmer')} className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-28 hover:bg-gray-200 cursor-pointer"><div className="flex items-center justify-between">Young Farmer{getSortIcon('members.young_farmer')}</div></th>
-                <th onClick={() => requestSort('members.ips')} className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-24 hover:bg-gray-200 cursor-pointer"><div className="flex items-center justify-between">IPs{getSortIcon('members.ips')}</div></th>
-                <th onClick={() => requestSort('groupCategories.womenLed')} className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-24 hover:bg-gray-200 cursor-pointer"><div className="flex items-center justify-between">Women-Led{getSortIcon('groupCategories.womenLed')}</div></th>
-                <th onClick={() => requestSort('groupCategories.menLed')} className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-24 hover:bg-gray-200 cursor-pointer"><div className="flex items-center justify-between">Men-Led{getSortIcon('groupCategories.menLed')}</div></th>
-                <th onClick={() => requestSort('groupCategories.seniorCitizensGroup')} className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-28 hover:bg-gray-200 cursor-pointer"><div className="flex items-center justify-between">Senior Citizens{getSortIcon('groupCategories.seniorCitizensGroup')}</div></th>
-                <th onClick={() => requestSort('groupCategories.personsWithDisabilitiesGroup')} className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-24 hover:bg-gray-200 cursor-pointer"><div className="flex items-center justify-between">PWD{getSortIcon('groupCategories.personsWithDisabilitiesGroup')}</div></th>
-                <th onClick={() => requestSort('groupCategories.youngFarmersOrganization')} className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-28 hover:bg-gray-200 cursor-pointer"><div className="flex items-center justify-between">Young Farmers{getSortIcon('groupCategories.youngFarmersOrganization')}</div></th>
-                <th onClick={() => requestSort('groupCategories.indigenousPeoplesAssociation')} className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-24 hover:bg-gray-200 cursor-pointer"><div className="flex items-center justify-between">IP Assoc{getSortIcon('groupCategories.indigenousPeoplesAssociation')}</div></th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-32">Specific Intervention</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-24">Amount</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 w-24">Active</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-24">Inactive</th>
+                <th onClick={() => requestSort('members.male')} className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 w-24 hover:bg-slate-100 cursor-pointer transition-colors"><div className="flex items-center justify-between">Male{getSortIcon('members.male')}</div></th>
+                <th onClick={() => requestSort('members.female')} className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 w-24 hover:bg-slate-100 cursor-pointer transition-colors"><div className="flex items-center justify-between">Female{getSortIcon('members.female')}</div></th>
+                <th onClick={() => requestSort('members.senior_citizen')} className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 w-28 hover:bg-slate-100 cursor-pointer transition-colors"><div className="flex items-center justify-between">Senior Citizen{getSortIcon('members.senior_citizen')}</div></th>
+                <th onClick={() => requestSort('members.differently_abled')} className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 w-32 hover:bg-slate-100 cursor-pointer transition-colors"><div className="flex items-center justify-between">Differently-abled{getSortIcon('members.differently_abled')}</div></th>
+                <th onClick={() => requestSort('members.young_farmer')} className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 w-28 hover:bg-slate-100 cursor-pointer transition-colors"><div className="flex items-center justify-between">Young Farmer{getSortIcon('members.young_farmer')}</div></th>
+                <th onClick={() => requestSort('members.ips')} className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 w-24 hover:bg-slate-100 cursor-pointer transition-colors"><div className="flex items-center justify-between">IPs{getSortIcon('members.ips')}</div></th>
+                <th onClick={() => requestSort('groupCategories.womenLed')} className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 w-24 hover:bg-slate-100 cursor-pointer transition-colors"><div className="flex items-center justify-between">Women-Led{getSortIcon('groupCategories.womenLed')}</div></th>
+                <th onClick={() => requestSort('groupCategories.menLed')} className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 w-24 hover:bg-slate-100 cursor-pointer transition-colors"><div className="flex items-center justify-between">Men-Led{getSortIcon('groupCategories.menLed')}</div></th>
+                <th onClick={() => requestSort('groupCategories.seniorCitizensGroup')} className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 w-28 hover:bg-slate-100 cursor-pointer transition-colors"><div className="flex items-center justify-between">Senior Citizens{getSortIcon('groupCategories.seniorCitizensGroup')}</div></th>
+                <th onClick={() => requestSort('groupCategories.personsWithDisabilitiesGroup')} className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 w-24 hover:bg-slate-100 cursor-pointer transition-colors"><div className="flex items-center justify-between">PWD{getSortIcon('groupCategories.personsWithDisabilitiesGroup')}</div></th>
+                <th onClick={() => requestSort('groupCategories.youngFarmersOrganization')} className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 w-28 hover:bg-slate-100 cursor-pointer transition-colors"><div className="flex items-center justify-between">Young Farmers{getSortIcon('groupCategories.youngFarmersOrganization')}</div></th>
+                <th onClick={() => requestSort('groupCategories.indigenousPeoplesAssociation')} className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 w-24 hover:bg-slate-100 cursor-pointer transition-colors"><div className="flex items-center justify-between">IP Assoc{getSortIcon('groupCategories.indigenousPeoplesAssociation')}</div></th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 w-32">Specific Intervention</th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 w-24">Amount</th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-r border-slate-100 w-24">Active</th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide w-24">Inactive</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-100">
               {filteredData.length === 0 ? (
-                <tr><td colSpan="29" className="px-6 py-12 text-center">
-                  <div className="text-gray-500 py-8"><FiSearch className="h-16 w-16 mx-auto mb-4 text-gray-300" /><p className="text-lg font-medium text-gray-700">No associations found</p><p className="text-sm text-gray-500 mt-1">Try adjusting your filters or search term</p><button onClick={clearFilters} className="mt-4 px-4 py-2 text-sm text-green-600 hover:text-green-800 font-medium">Clear all filters</button></div>
+                <tr><td colSpan="29" className="px-6 py-16 text-center">
+                  <div className="text-slate-500 py-4">
+                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-slate-50 mb-4">
+                      <FiSearch className="h-7 w-7 text-slate-300" />
+                    </div>
+                    <p className="text-base font-semibold text-slate-700">No associations found</p>
+                    <p className="text-sm text-slate-400 mt-1">Try adjusting your filters or search term.</p>
+                    <button onClick={clearFilters} className="mt-4 text-sm text-emerald-600 hover:text-emerald-800 font-semibold">Clear all filters</button>
+                  </div>
                 </td></tr>
               ) : (
                 displayedData.map((item, idx) => {
@@ -1723,35 +1809,64 @@ export default function FullCoopAssociations() {
           <Pagination currentPage={currentPage} totalPages={totalPages} itemsPerPage={itemsPerPage} totalItems={filteredData.length} onPageChange={handlePageChange} onItemsPerPageChange={handleItemsPerPageChange} />
         )}
 
-        <div className="px-5 md:px-6 py-4 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between">
-            <div className="text-sm text-gray-700">Showing <span className="font-bold">{filteredData.length}</span> of <span className="font-bold">{data.length}</span> associations • <span className="ml-2 text-green-600 font-medium">{((filteredData.length / data.length) * 100).toFixed(1)}% of total</span></div>
-            <div className="mt-2 sm:mt-0"><div className="text-xs text-gray-500 flex items-center"><span className="inline-block w-2 h-2 bg-green-500 rounded-full mr-2"></span>Last updated: {new Date().toLocaleDateString("en-US", { year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}</div></div>
+        <div className="px-5 md:px-6 py-4 border-t border-slate-100 bg-slate-50/40">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+            <div className="text-xs text-slate-500">
+              Showing <span className="font-semibold text-slate-700">{filteredData.length}</span> of <span className="font-semibold text-slate-700">{data.length}</span> associations
+              <span className="ml-2 text-emerald-600 font-semibold">{data.length ? ((filteredData.length / data.length) * 100).toFixed(1) : "0.0"}% of total</span>
+            </div>
+            <div className="text-xs text-slate-400 flex items-center">
+              <span className="inline-block w-1.5 h-1.5 bg-emerald-500 rounded-full mr-2"></span>
+              Last updated: {new Date().toLocaleDateString("en-US", { year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Municipality Modal (Import) */}
       {isMunicipalityModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div ref={modalRef} className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl animate-fadeIn">
-            <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-between">
-              <div><h3 className="text-2xl font-bold text-gray-900">Specify Location</h3><p className="text-sm text-gray-600 mt-1">Where are these associations located?</p></div>
-              <button onClick={() => setIsMunicipalityModalOpen(false)} className="p-2.5 hover:bg-white rounded-xl transition-all duration-200 hover:rotate-90"><FiX className="w-6 h-6 text-gray-500" /></button>
+        <div className={ds.modalOverlay}>
+          <div ref={modalRef} className={`${ds.modalShell} max-w-2xl`}>
+            <div className={`${ds.modalHeader} bg-white`}>
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Specify Location</h3>
+                <p className="text-sm text-slate-500 mt-0.5">Where are these associations located?</p>
+              </div>
+              <button onClick={() => setIsMunicipalityModalOpen(false)} className={ds.btnIcon}><FiX className="w-5 h-5" /></button>
             </div>
-            <div className="p-8">
-              <div className="mb-8"><div className="flex items-center justify-between mb-4"><h4 className="text-lg font-bold text-gray-800">Excel Data Preview</h4><span className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded-full">{excelData.length} associations found</span></div>
-                <div className="bg-gray-50 rounded-xl p-4 max-h-60 overflow-y-auto"><table className="w-full text-sm"><thead><tr className="bg-gray-200"><th className="px-3 py-2 text-left">Association Name</th><th className="px-3 py-2 text-left">President</th><th className="px-3 py-2 text-left">Members</th></tr></thead><tbody>{excelData.slice(0,5).map((item,i)=>(
-                  <tr key={i} className="border-b border-gray-200"><td className="px-3 py-2 truncate max-w-xs">{item.name||"No name"}</td><td className="px-3 py-2">{item.president||"No president"}</td><td className="px-3 py-2">M: {item.members?.male||"0"} | F: {item.members?.female||"0"}</td></tr>
-                ))}</tbody></table>{excelData.length>5 && <p className="text-sm text-gray-500 mt-2 text-center">+ {excelData.length-5} more associations...</p>}</div></div>
-              <div className="space-y-6">
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Province <span className="text-red-500">*</span></label><select value={provinceForImport} onChange={(e)=>setProvinceForImport(e.target.value)} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"><option value="">Select Province</option>{uniqueProvinces.map((p,i)=><option key={i} value={p}>{p}</option>)}</select></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Municipality <span className="text-red-500">*</span></label><input type="text" value={municipalityForImport} onChange={(e)=>setMunicipalityForImport(e.target.value)} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Enter municipality name (e.g., POLA, CALAPAN CITY)" /><p className="text-sm text-gray-500 mt-2">Enter the municipality where these associations are located. This will group all imported data under this municipality.</p></div>
+            <div className="p-7">
+              <div className="mb-7">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-bold text-slate-900">Excel Data Preview</h4>
+                  <Badge tone="info">{excelData.length} associations found</Badge>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-3 max-h-60 overflow-y-auto border border-slate-100">
+                  <table className="w-full text-sm">
+                    <thead><tr className="text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide"><th className="px-3 py-2">Association Name</th><th className="px-3 py-2">President</th><th className="px-3 py-2">Members</th></tr></thead>
+                    <tbody>{excelData.slice(0,5).map((item,i)=>(
+                      <tr key={i} className="border-t border-slate-100"><td className="px-3 py-2 truncate max-w-xs text-slate-700">{item.name||"No name"}</td><td className="px-3 py-2 text-slate-700">{item.president||"No president"}</td><td className="px-3 py-2 text-slate-500">M: {item.members?.male||"0"} | F: {item.members?.female||"0"}</td></tr>
+                    ))}</tbody>
+                  </table>
+                  {excelData.length>5 && <p className="text-xs text-slate-400 mt-2 text-center">+ {excelData.length-5} more associations…</p>}
+                </div>
+              </div>
+              <div className="space-y-5">
+                <div>
+                  <FieldLabel required>Province</FieldLabel>
+                  <select value={provinceForImport} onChange={(e)=>setProvinceForImport(e.target.value)} className={ds.select}>
+                    <option value="">Select Province</option>{uniqueProvinces.map((p,i)=><option key={i} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <FieldLabel required>Municipality</FieldLabel>
+                  <input type="text" value={municipalityForImport} onChange={(e)=>setMunicipalityForImport(e.target.value)} className={ds.input} placeholder="Enter municipality name (e.g., POLA, CALAPAN CITY)" />
+                  <p className="text-xs text-slate-400 mt-2">Enter the municipality where these associations are located. This will group all imported data under this municipality.</p>
+                </div>
               </div>
             </div>
-            <div className="px-8 py-6 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white flex justify-end space-x-4">
-              <button onClick={()=>setIsMunicipalityModalOpen(false)} className="px-6 py-3.5 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-              <button onClick={handleMunicipalitySubmit} className="px-8 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 shadow-lg flex items-center"><FiPackage className="mr-2 text-lg" />Continue to Import</button>
+            <div className={`${ds.modalFooter} flex justify-end gap-3`}>
+              <button onClick={()=>setIsMunicipalityModalOpen(false)} className={ds.btnSecondary}>Cancel</button>
+              <button onClick={handleMunicipalitySubmit} className={ds.btnPrimary}><FiPackage className="text-base" />Continue to Import</button>
             </div>
           </div>
         </div>
@@ -1759,30 +1874,63 @@ export default function FullCoopAssociations() {
 
       {/* Import Confirmation Modal */}
       {isImportModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div ref={modalRef} className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl animate-fadeIn">
-            <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-between">
-              <div><h3 className="text-2xl font-bold text-gray-900">Confirm Import</h3><p className="text-sm text-gray-600 mt-1">Review the data before importing to database</p></div>
-              <button onClick={()=>{setIsImportModalOpen(false);setImportStatus({loading:false,message:"",success:false,error:false});}} className="p-2.5 hover:bg-white rounded-xl"><FiX className="w-6 h-6 text-gray-500" /></button>
+        <div className={ds.modalOverlay}>
+          <div ref={modalRef} className={`${ds.modalShell} max-w-3xl`}>
+            <div className={`${ds.modalHeader} bg-white`}>
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Confirm Import</h3>
+                <p className="text-sm text-slate-500 mt-0.5">Review the data before importing to database</p>
+              </div>
+              <button onClick={()=>{setIsImportModalOpen(false);setImportStatus({loading:false,message:"",success:false,error:false});}} className={ds.btnIcon}><FiX className="w-5 h-5" /></button>
             </div>
-            <div className="p-8">
+            <div className="p-7">
               {importStatus.message && (
-                <div className={`mb-6 p-4 rounded-xl ${importStatus.success?'bg-green-50 border border-green-200':importStatus.error?'bg-red-50 border border-red-200':'bg-blue-50 border border-blue-200'}`}>
-                  <div className="flex items-center">{importStatus.loading && <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-3"></div>}{importStatus.success && <FiCheckCircle className="text-green-600 mr-3"/>}{importStatus.error && <FiAlertCircle className="text-red-600 mr-3"/>}<p className={`font-medium ${importStatus.success?'text-green-800':importStatus.error?'text-red-800':'text-blue-800'}`}>{importStatus.message}</p></div>
+                <div className={`mb-6 p-4 rounded-xl border flex items-center gap-3 ${importStatus.success?'bg-emerald-50 border-emerald-200':importStatus.error?'bg-rose-50 border-rose-200':'bg-blue-50 border-blue-200'}`}>
+                  {importStatus.loading && <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent flex-shrink-0"></div>}
+                  {importStatus.success && <FiCheckCircle className="text-emerald-600 flex-shrink-0"/>}
+                  {importStatus.error && <FiAlertCircle className="text-rose-600 flex-shrink-0"/>}
+                  <p className={`text-sm font-medium ${importStatus.success?'text-emerald-800':importStatus.error?'text-rose-800':'text-blue-800'}`}>{importStatus.message}</p>
                 </div>
               )}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <div className="bg-gray-50 rounded-xl p-5"><h4 className="text-lg font-bold text-gray-800 mb-3">Import Summary</h4><div className="space-y-3"><div className="flex justify-between"><span>Total Associations:</span><span className="font-bold text-lg">{excelData.length}</span></div><div className="flex justify-between"><span>Province:</span><span className="font-semibold bg-blue-100 text-blue-800 px-3 py-1 rounded-full">{provinceForImport}</span></div><div className="flex justify-between"><span>Municipality:</span><span className="font-semibold bg-green-100 text-green-800 px-3 py-1 rounded-full">{municipalityForImport}</span></div><div className="flex justify-between"><span>Total Members:</span><span className="font-bold">{excelData.reduce((sum,item)=>sum+(parseInt(item.members?.male)||0)+(parseInt(item.members?.female)||0)+(parseInt(item.members?.senior_citizen)||0)+(parseInt(item.members?.differently_abled)||0)+(parseInt(item.members?.young_farmer)||0)+(parseInt(item.members?.ips)||0),0).toLocaleString()}</span></div></div></div>
-                <div className="bg-gray-50 rounded-xl p-5"><h4 className="text-lg font-bold text-gray-800 mb-3">Data Preview</h4><div className="space-y-2 text-sm"><div className="flex justify-between"><span>Sample Association:</span><span className="font-medium truncate max-w-xs">{excelData[0]?.name||"No data"}</span></div><div className="flex justify-between"><span>Sample President:</span><span className="font-medium">{excelData[0]?.president||"No data"}</span></div><div className="flex justify-between"><span>Sample Commodity:</span><span className="font-medium">{excelData[0]?.commodity||"No data"}</span></div><div className="flex justify-between"><span>Sample Status:</span><span className="font-medium">{excelData[0]?.status?.active?"Active":"Inactive"}</span></div></div></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-7">
+                <div className="bg-slate-50 rounded-xl p-5 border border-slate-100">
+                  <h4 className="text-sm font-bold text-slate-900 mb-4">Import Summary</h4>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between items-center"><span className="text-slate-500">Total Associations</span><span className="font-bold text-slate-900 text-base">{excelData.length}</span></div>
+                    <div className="flex justify-between items-center"><span className="text-slate-500">Province</span><Badge tone="info">{provinceForImport}</Badge></div>
+                    <div className="flex justify-between items-center"><span className="text-slate-500">Municipality</span><Badge tone="success">{municipalityForImport}</Badge></div>
+                    <div className="flex justify-between items-center"><span className="text-slate-500">Total Members</span><span className="font-bold text-slate-900">{excelData.reduce((sum,item)=>sum+(parseInt(item.members?.male)||0)+(parseInt(item.members?.female)||0)+(parseInt(item.members?.senior_citizen)||0)+(parseInt(item.members?.differently_abled)||0)+(parseInt(item.members?.young_farmer)||0)+(parseInt(item.members?.ips)||0),0).toLocaleString()}</span></div>
+                  </div>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-5 border border-slate-100">
+                  <h4 className="text-sm font-bold text-slate-900 mb-4">Data Preview</h4>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between"><span className="text-slate-500">Sample Association</span><span className="font-medium text-slate-800 truncate max-w-[10rem]">{excelData[0]?.name||"No data"}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">Sample President</span><span className="font-medium text-slate-800">{excelData[0]?.president||"No data"}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">Sample Commodity</span><span className="font-medium text-slate-800">{excelData[0]?.commodity||"No data"}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">Sample Status</span><span className="font-medium text-slate-800">{excelData[0]?.status?.active?"Active":"Inactive"}</span></div>
+                  </div>
+                </div>
               </div>
-              <div className="mb-8"><h4 className="text-lg font-bold text-gray-800 mb-4">First 5 Associations</h4><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="bg-gray-200"><th>No.</th><th>Association Name</th><th>President</th><th>Members</th><th>Commodity</th></tr></thead><tbody>{excelData.slice(0,5).map((item,i)=>(<tr key={i} className="border-b border-gray-200"><td className="px-3 py-2">{i+1}</td><td className="px-3 py-2 truncate max-w-xs" title={item.name}>{item.name||"No name"}</td><td className="px-3 py-2">{item.president||"No president"}</td><td className="px-3 py-2">M: {item.members?.male||"0"} | F: {item.members?.female||"0"}</td><td className="px-3 py-2">{item.commodity||"Not specified"}</td></tr>))}</tbody></table></div></div>
-              <div className="bg-yellow-50 border-l-4 border-l-yellow-500 p-4 rounded-r-lg"><p className="text-sm text-yellow-800"><span className="font-bold">⚠️ Important:</span> This will {provincesData.find(p=>p.name===provinceForImport)?'update':'create'} the province document and {excelData.some(item=>item.municipality===municipalityForImport)?'add to':'create'} the municipality with {excelData.length} associations.</p></div>
+              <div className="mb-7">
+                <h4 className="text-sm font-bold text-slate-900 mb-4">First 5 Associations</h4>
+                <div className="overflow-x-auto rounded-xl border border-slate-100">
+                  <table className="w-full text-sm">
+                    <thead><tr className="bg-slate-50 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide"><th className="px-3 py-2.5">No.</th><th className="px-3 py-2.5">Association Name</th><th className="px-3 py-2.5">President</th><th className="px-3 py-2.5">Members</th><th className="px-3 py-2.5">Commodity</th></tr></thead>
+                    <tbody>{excelData.slice(0,5).map((item,i)=>(<tr key={i} className="border-t border-slate-100"><td className="px-3 py-2.5 text-slate-500">{i+1}</td><td className="px-3 py-2.5 truncate max-w-xs text-slate-800 font-medium" title={item.name}>{item.name||"No name"}</td><td className="px-3 py-2.5 text-slate-700">{item.president||"No president"}</td><td className="px-3 py-2.5 text-slate-500">M: {item.members?.male||"0"} | F: {item.members?.female||"0"}</td><td className="px-3 py-2.5 text-slate-700">{item.commodity||"Not specified"}</td></tr>))}</tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex gap-3">
+                <FiAlertCircle className="text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-amber-800"><span className="font-semibold">Important:</span> This will {provincesData.find(p=>p.name===provinceForImport)?'update':'create'} the province document and {excelData.some(item=>item.municipality===municipalityForImport)?'add to':'create'} the municipality with {excelData.length} associations.</p>
+              </div>
             </div>
-            <div className="px-8 py-6 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white flex justify-between">
-              <button onClick={downloadSampleTemplate} className="px-6 py-3.5 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 flex items-center"><FiFileText className="mr-2" />Download Template</button>
-              <div className="flex space-x-4">
-                <button onClick={()=>{setIsImportModalOpen(false);setImportStatus({loading:false,message:"",success:false,error:false});}} className="px-6 py-3.5 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-                <button onClick={processImportToFirebase} disabled={importStatus.loading} className={`px-8 py-3.5 rounded-xl font-semibold shadow-lg flex items-center ${importStatus.loading?'bg-blue-400 cursor-not-allowed':'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'}`}>{importStatus.loading?<><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>Importing...</>:<><FiUpload className="mr-2 text-lg" />Confirm Import</>}</button>
+            <div className={`${ds.modalFooter} flex flex-col sm:flex-row justify-between gap-3`}>
+              <button onClick={downloadSampleTemplate} className={ds.btnSecondary}><FiFileText className="text-base" />Download Template</button>
+              <div className="flex gap-3">
+                <button onClick={()=>{setIsImportModalOpen(false);setImportStatus({loading:false,message:"",success:false,error:false});}} className={ds.btnSecondary}>Cancel</button>
+                <button onClick={processImportToFirebase} disabled={importStatus.loading} className={ds.btnPrimary}>{importStatus.loading?<><div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>Importing…</>:<><FiUpload className="text-base" />Confirm Import</>}</button>
               </div>
             </div>
           </div>
@@ -1791,50 +1939,73 @@ export default function FullCoopAssociations() {
 
       {/* Add Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh]">
-            <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50 flex items-center justify-between rounded-t-3xl sticky top-0 bg-white z-10">
-              <div><h3 className="text-2xl font-bold text-gray-900">Add New Association</h3><p className="text-sm text-gray-600 mt-1">Fill in the details below to register a new association</p></div>
-              <button onClick={()=>setIsAddModalOpen(false)} className="p-2.5 hover:bg-white rounded-xl transition-all duration-200 hover:rotate-90"><FiX className="w-6 h-6 text-gray-500" /></button>
-            </div>
-            <div className="p-8 overflow-y-auto flex-1">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Association Name <span className="text-red-500">*</span></label><input type="text" name="name" value={newAssociation.name} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500" placeholder="Enter association name" required/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Province <span className="text-red-500">*</span></label><select name="province" value={newAssociation.province} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500"><option value="">Select Province</option>{uniqueProvinces.map((p,i)=><option key={i} value={p}>{p}</option>)}</select></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Municipality <span className="text-red-500">*</span></label><input type="text" name="municipality" value={newAssociation.municipality} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500" placeholder="Enter municipality name" required/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Complete Address <span className="text-red-500">*</span></label><input type="text" name="address" value={newAssociation.address} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500" placeholder="Enter complete address" required/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Registration Type</label><select name="registration_type" value={newAssociation.registration_type} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500"><option value="">Select Type</option><option value="DOLE">DOLE</option><option value="CDA">CDA</option><option value="SEC">SEC</option><option value="none">None</option></select></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">President Name <span className="text-red-500">*</span></label><input type="text" name="president" value={newAssociation.president} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500" placeholder="Enter president's full name" required/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Contact Number</label><input type="text" name="contact_number" value={newAssociation.contact_number} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500" placeholder="Enter contact number"/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Commodity</label><input type="text" name="commodity" value={newAssociation.commodity} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500" placeholder="Enter main commodity"/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Status</label><select name="status" value={newAssociation.status.active==="P"?"Active":"Inactive"} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500"><option value="Active">Active</option><option value="Inactive">Inactive</option></select></div>
+        <div className={ds.modalOverlay}>
+          <div className={`${ds.modalShell} max-w-4xl flex flex-col max-h-[90vh]`}>
+            <div className={ds.modalHeader}>
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Add New Association</h3>
+                <p className="text-sm text-slate-500 mt-0.5">Fill in the details below to register a new association</p>
               </div>
-              <div className="mb-8"><h4 className="text-lg font-bold text-gray-800 mb-6 pb-3 border-b border-gray-200">Members Information</h4><div className="grid grid-cols-2 md:grid-cols-6 gap-6">
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Male Members</label><input type="number" name="members.male" value={newAssociation.members.male} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl" min="0"/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Female Members</label><input type="number" name="members.female" value={newAssociation.members.female} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl" min="0"/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Senior Citizens</label><input type="number" name="members.senior_citizen" value={newAssociation.members.senior_citizen} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl" min="0"/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Differently-abled</label><input type="number" name="members.differently_abled" value={newAssociation.members.differently_abled} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl" min="0"/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Young Farmer</label><input type="number" name="members.young_farmer" value={newAssociation.members.young_farmer} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl" min="0"/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">IPs</label><input type="number" name="members.ips" value={newAssociation.members.ips} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl" min="0"/></div>
-              </div></div>
-              <div className="mb-8"><h4 className="text-lg font-bold text-gray-800 mb-6 pb-3 border-b border-gray-200">Group Categories</h4><div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <label className="flex items-center space-x-2"><input type="checkbox" name="groupCategories.womenLed" checked={newAssociation.groupCategories.womenLed} onChange={handleInputChange} className="rounded text-indigo-600" /><span>Women-Led Group</span></label>
-                <label className="flex items-center space-x-2"><input type="checkbox" name="groupCategories.menLed" checked={newAssociation.groupCategories.menLed} onChange={handleInputChange} className="rounded text-indigo-600" /><span>Men-Led Group</span></label>
-                <label className="flex items-center space-x-2"><input type="checkbox" name="groupCategories.seniorCitizensGroup" checked={newAssociation.groupCategories.seniorCitizensGroup} onChange={handleInputChange} className="rounded text-indigo-600" /><span>Senior Citizens Group</span></label>
-                <label className="flex items-center space-x-2"><input type="checkbox" name="groupCategories.personsWithDisabilitiesGroup" checked={newAssociation.groupCategories.personsWithDisabilitiesGroup} onChange={handleInputChange} className="rounded text-indigo-600" /><span>Persons with Disabilities Group</span></label>
-                <label className="flex items-center space-x-2"><input type="checkbox" name="groupCategories.youngFarmersOrganization" checked={newAssociation.groupCategories.youngFarmersOrganization} onChange={handleInputChange} className="rounded text-indigo-600" /><span>Young Farmers Organization</span></label>
-                <label className="flex items-center space-x-2"><input type="checkbox" name="groupCategories.indigenousPeoplesAssociation" checked={newAssociation.groupCategories.indigenousPeoplesAssociation} onChange={handleInputChange} className="rounded text-indigo-600" /><span>Indigenous Peoples Association</span></label>
-              </div></div>
-              <div className="mb-8"><h4 className="text-lg font-bold text-gray-800 mb-6 pb-3 border-b border-gray-200">Intervention Information</h4><div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Year</label><div className="flex items-center h-12"><label className="flex items-center"><input type="checkbox" name="interventionReviewed" checked={newAssociation.interventionReviewed} onChange={handleInputChange} className="h-5 w-5 text-indigo-600 rounded" /><span className="ml-2">Yes</span></label></div></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Specific Intervention</label><input type="text" name="specificIntervention" value={newAssociation.specificIntervention} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl" placeholder="e.g., Seeds, Mech, Credit, Extn"/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Amount</label><input type="text" name="interventionAmount" value={newAssociation.interventionAmount} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl" placeholder="e.g., 100 bags, ₱50,000"/></div>
-              </div></div>
+              <button onClick={()=>setIsAddModalOpen(false)} className={ds.btnIcon}><FiX className="w-5 h-5" /></button>
             </div>
-            <div className="px-8 py-6 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white rounded-b-3xl sticky bottom-0 bg-white">
-              <div className="flex justify-end space-x-4">
-                <button onClick={()=>setIsAddModalOpen(false)} className="px-6 py-3.5 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-                <button onClick={handleAddAssociation} className="px-8 py-3.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 shadow-lg flex items-center"><FiSave className="mr-2 text-lg" />Save Association</button>
+            <div className="p-7 overflow-y-auto flex-1">
+              <SectionLegend><FiHome className="w-4 h-4 text-slate-400"/>Basic Information</SectionLegend>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
+                <div><FieldLabel required>Association Name</FieldLabel><input type="text" name="name" value={newAssociation.name} onChange={handleInputChange} className={ds.input} placeholder="Enter association name" required/></div>
+                <div><FieldLabel required>Province</FieldLabel><select name="province" value={newAssociation.province} onChange={handleInputChange} className={ds.select}><option value="">Select Province</option>{uniqueProvinces.map((p,i)=><option key={i} value={p}>{p}</option>)}</select></div>
+                <div><FieldLabel required>Municipality</FieldLabel><input type="text" name="municipality" value={newAssociation.municipality} onChange={handleInputChange} className={ds.input} placeholder="Enter municipality name" required/></div>
+                <div><FieldLabel required>Complete Address</FieldLabel><input type="text" name="address" value={newAssociation.address} onChange={handleInputChange} className={ds.input} placeholder="Enter complete address" required/></div>
+                <div><FieldLabel>Registration Type</FieldLabel><select name="registration_type" value={newAssociation.registration_type} onChange={handleInputChange} className={ds.select}><option value="">Select Type</option><option value="DOLE">DOLE</option><option value="CDA">CDA</option><option value="SEC">SEC</option><option value="none">None</option></select></div>
+                <div><FieldLabel required>President Name</FieldLabel><input type="text" name="president" value={newAssociation.president} onChange={handleInputChange} className={ds.input} placeholder="Enter president's full name" required/></div>
+                <div><FieldLabel>Contact Number</FieldLabel><input type="text" name="contact_number" value={newAssociation.contact_number} onChange={handleInputChange} className={ds.input} placeholder="Enter contact number"/></div>
+                <div><FieldLabel>Commodity</FieldLabel><input type="text" name="commodity" value={newAssociation.commodity} onChange={handleInputChange} className={ds.input} placeholder="Enter main commodity"/></div>
+                <div><FieldLabel>Status</FieldLabel><select name="status" value={newAssociation.status.active==="P"?"Active":"Inactive"} onChange={handleInputChange} className={ds.select}><option value="Active">Active</option><option value="Inactive">Inactive</option></select></div>
+              </div>
+
+              <SectionLegend><FiUsers className="w-4 h-4 text-slate-400"/>Members Information</SectionLegend>
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-5 mb-8">
+                <div><FieldLabel>Male</FieldLabel><input type="number" name="members.male" value={newAssociation.members.male} onChange={handleInputChange} className={ds.input} min="0"/></div>
+                <div><FieldLabel>Female</FieldLabel><input type="number" name="members.female" value={newAssociation.members.female} onChange={handleInputChange} className={ds.input} min="0"/></div>
+                <div><FieldLabel>Senior Citizens</FieldLabel><input type="number" name="members.senior_citizen" value={newAssociation.members.senior_citizen} onChange={handleInputChange} className={ds.input} min="0"/></div>
+                <div><FieldLabel>Differently-abled</FieldLabel><input type="number" name="members.differently_abled" value={newAssociation.members.differently_abled} onChange={handleInputChange} className={ds.input} min="0"/></div>
+                <div><FieldLabel>Young Farmer</FieldLabel><input type="number" name="members.young_farmer" value={newAssociation.members.young_farmer} onChange={handleInputChange} className={ds.input} min="0"/></div>
+                <div><FieldLabel>IPs</FieldLabel><input type="number" name="members.ips" value={newAssociation.members.ips} onChange={handleInputChange} className={ds.input} min="0"/></div>
+              </div>
+
+              <SectionLegend><FiTag className="w-4 h-4 text-slate-400"/>Group Categories</SectionLegend>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
+                {[
+                  ["groupCategories.womenLed", newAssociation.groupCategories.womenLed, "Women-Led Group"],
+                  ["groupCategories.menLed", newAssociation.groupCategories.menLed, "Men-Led Group"],
+                  ["groupCategories.seniorCitizensGroup", newAssociation.groupCategories.seniorCitizensGroup, "Senior Citizens Group"],
+                  ["groupCategories.personsWithDisabilitiesGroup", newAssociation.groupCategories.personsWithDisabilitiesGroup, "Persons with Disabilities Group"],
+                  ["groupCategories.youngFarmersOrganization", newAssociation.groupCategories.youngFarmersOrganization, "Young Farmers Organization"],
+                  ["groupCategories.indigenousPeoplesAssociation", newAssociation.groupCategories.indigenousPeoplesAssociation, "Indigenous Peoples Association"],
+                ].map(([name, checked, label]) => (
+                  <label key={name} className="flex items-center gap-2.5 text-sm text-slate-700 px-3.5 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors">
+                    <input type="checkbox" name={name} checked={checked} onChange={handleInputChange} className={ds.checkbox} />
+                    <span className="font-medium">{label}</span>
+                  </label>
+                ))}
+              </div>
+
+              <SectionLegend><FiBriefcase className="w-4 h-4 text-slate-400"/>Intervention Information</SectionLegend>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div>
+                  <FieldLabel>Year</FieldLabel>
+                  <label className="flex items-center gap-2.5 h-11 px-3.5 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">
+                    <input type="checkbox" name="interventionReviewed" checked={newAssociation.interventionReviewed} onChange={handleInputChange} className={ds.checkbox} />
+                    <span className="text-sm font-medium text-slate-700">Yes</span>
+                  </label>
+                </div>
+                <div><FieldLabel>Specific Intervention</FieldLabel><input type="text" name="specificIntervention" value={newAssociation.specificIntervention} onChange={handleInputChange} className={ds.input} placeholder="e.g., Seeds, Mech, Credit, Extn"/></div>
+                <div><FieldLabel>Amount</FieldLabel><input type="text" name="interventionAmount" value={newAssociation.interventionAmount} onChange={handleInputChange} className={ds.input} placeholder="e.g., 100 bags, ₱50,000"/></div>
+              </div>
+            </div>
+            <div className={ds.modalFooter}>
+              <div className="flex justify-end gap-3">
+                <button onClick={()=>setIsAddModalOpen(false)} className={ds.btnSecondary}>Cancel</button>
+                <button onClick={handleAddAssociation} className={ds.btnPrimary}><FiSave className="text-base" />Save Association</button>
               </div>
             </div>
           </div>
@@ -1843,51 +2014,78 @@ export default function FullCoopAssociations() {
 
       {/* Edit Modal */}
       {isEditModalOpen && selectedAssociation && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh]">
-            <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-cyan-50 flex items-center justify-between rounded-t-3xl sticky top-0 bg-white z-10">
-              <div><h3 className="text-2xl font-bold text-gray-900">Edit Association</h3><p className="text-sm text-gray-600 mt-1">Update the details of this association</p></div>
-              <button onClick={()=>setIsEditModalOpen(false)} className="p-2.5 hover:bg-white rounded-xl"><FiX className="w-6 h-6 text-gray-500" /></button>
-            </div>
-            <div className="p-8 overflow-y-auto flex-1">
-              <div className="mb-6 p-4 bg-yellow-50 border-l-4 border-l-yellow-500 rounded-r-lg"><p className="text-sm text-gray-700"><span className="font-semibold">Note:</span> Province and Municipality cannot be changed. If you need to move this association to a different location, please delete and create a new one.</p></div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Association Name</label><input type="text" name="name" value={newAssociation.name} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl"/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Province</label><input type="text" value={newAssociation.province} disabled className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl bg-gray-50 text-gray-500"/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Municipality</label><input type="text" value={newAssociation.municipality} disabled className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl bg-gray-50 text-gray-500"/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Complete Address</label><input type="text" name="address" value={newAssociation.address} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl"/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Registration Type</label><select name="registration_type" value={newAssociation.registration_type} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl"><option value="">Select Type</option><option value="DOLE">DOLE</option><option value="CDA">CDA</option><option value="SEC">SEC</option><option value="none">None</option></select></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">President Name</label><input type="text" name="president" value={newAssociation.president} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl"/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Contact Number</label><input type="text" name="contact_number" value={newAssociation.contact_number} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl"/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Commodity</label><input type="text" name="commodity" value={newAssociation.commodity} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl"/></div>
-                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Status</label><select name="status" value={newAssociation.status.active==="P"?"Active":"Inactive"} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl"><option value="Active">Active</option><option value="Inactive">Inactive</option></select></div>
+        <div className={ds.modalOverlay}>
+          <div className={`${ds.modalShell} max-w-4xl flex flex-col max-h-[90vh]`}>
+            <div className={ds.modalHeader}>
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Edit Association</h3>
+                <p className="text-sm text-slate-500 mt-0.5">Update the details of this association</p>
               </div>
-              <div className="mb-8"><h4 className="text-lg font-bold text-gray-800 mb-6 pb-3 border-b border-gray-200">Members Information</h4><div className="grid grid-cols-2 md:grid-cols-6 gap-6">
-                <div><label>Male Members</label><input type="number" name="members.male" value={newAssociation.members.male} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl" min="0"/></div>
-                <div><label>Female Members</label><input type="number" name="members.female" value={newAssociation.members.female} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl" min="0"/></div>
-                <div><label>Senior Citizens</label><input type="number" name="members.senior_citizen" value={newAssociation.members.senior_citizen} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl" min="0"/></div>
-                <div><label>Differently-abled</label><input type="number" name="members.differently_abled" value={newAssociation.members.differently_abled} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl" min="0"/></div>
-                <div><label>Young Farmer</label><input type="number" name="members.young_farmer" value={newAssociation.members.young_farmer} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl" min="0"/></div>
-                <div><label>IPs</label><input type="number" name="members.ips" value={newAssociation.members.ips} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl" min="0"/></div>
-              </div></div>
-              <div className="mb-8"><h4 className="text-lg font-bold text-gray-800 mb-6 pb-3 border-b border-gray-200">Group Categories</h4><div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <label className="flex items-center space-x-2"><input type="checkbox" name="groupCategories.womenLed" checked={newAssociation.groupCategories.womenLed} onChange={handleInputChange} className="rounded text-indigo-600" /><span>Women-Led Group</span></label>
-                <label className="flex items-center space-x-2"><input type="checkbox" name="groupCategories.menLed" checked={newAssociation.groupCategories.menLed} onChange={handleInputChange} className="rounded text-indigo-600" /><span>Men-Led Group</span></label>
-                <label className="flex items-center space-x-2"><input type="checkbox" name="groupCategories.seniorCitizensGroup" checked={newAssociation.groupCategories.seniorCitizensGroup} onChange={handleInputChange} className="rounded text-indigo-600" /><span>Senior Citizens Group</span></label>
-                <label className="flex items-center space-x-2"><input type="checkbox" name="groupCategories.personsWithDisabilitiesGroup" checked={newAssociation.groupCategories.personsWithDisabilitiesGroup} onChange={handleInputChange} className="rounded text-indigo-600" /><span>Persons with Disabilities Group</span></label>
-                <label className="flex items-center space-x-2"><input type="checkbox" name="groupCategories.youngFarmersOrganization" checked={newAssociation.groupCategories.youngFarmersOrganization} onChange={handleInputChange} className="rounded text-indigo-600" /><span>Young Farmers Organization</span></label>
-                <label className="flex items-center space-x-2"><input type="checkbox" name="groupCategories.indigenousPeoplesAssociation" checked={newAssociation.groupCategories.indigenousPeoplesAssociation} onChange={handleInputChange} className="rounded text-indigo-600" /><span>Indigenous Peoples Association</span></label>
-              </div></div>
-              <div className="mb-8"><h4 className="text-lg font-bold text-gray-800 mb-6 pb-3 border-b border-gray-200">Intervention Information</h4><div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div><label>Year</label><div className="flex items-center h-12"><label className="flex items-center"><input type="checkbox" name="interventionReviewed" checked={newAssociation.interventionReviewed} onChange={handleInputChange} className="h-5 w-5 text-indigo-600 rounded" /><span className="ml-2">Yes</span></label></div></div>
-                <div><label>Specific Intervention</label><input type="text" name="specificIntervention" value={newAssociation.specificIntervention} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl"/></div>
-                <div><label>Amount</label><input type="text" name="interventionAmount" value={newAssociation.interventionAmount} onChange={handleInputChange} className="w-full text-black px-4 py-3 border-2 border-gray-300 rounded-xl"/></div>
-              </div></div>
+              <button onClick={()=>setIsEditModalOpen(false)} className={ds.btnIcon}><FiX className="w-5 h-5" /></button>
             </div>
-            <div className="px-8 py-6 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white rounded-b-3xl sticky bottom-0 bg-white">
-              <div className="flex justify-end space-x-4">
-                <button onClick={()=>setIsEditModalOpen(false)} className="px-6 py-3.5 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-                <button onClick={handleUpdateAssociation} className="px-8 py-3.5 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-cyan-700 shadow-lg flex items-center"><FiSave className="mr-2 text-lg" />Update Association</button>
+            <div className="p-7 overflow-y-auto flex-1">
+              <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex gap-3">
+                <FiInfo className="text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-amber-800"><span className="font-semibold">Note:</span> Province and Municipality cannot be changed. If you need to move this association to a different location, please delete and create a new one.</p>
+              </div>
+
+              <SectionLegend><FiHome className="w-4 h-4 text-slate-400"/>Basic Information</SectionLegend>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
+                <div><FieldLabel>Association Name</FieldLabel><input type="text" name="name" value={newAssociation.name} onChange={handleInputChange} className={ds.input}/></div>
+                <div><FieldLabel>Province</FieldLabel><input type="text" value={newAssociation.province} disabled className={ds.input}/></div>
+                <div><FieldLabel>Municipality</FieldLabel><input type="text" value={newAssociation.municipality} disabled className={ds.input}/></div>
+                <div><FieldLabel>Complete Address</FieldLabel><input type="text" name="address" value={newAssociation.address} onChange={handleInputChange} className={ds.input}/></div>
+                <div><FieldLabel>Registration Type</FieldLabel><select name="registration_type" value={newAssociation.registration_type} onChange={handleInputChange} className={ds.select}><option value="">Select Type</option><option value="DOLE">DOLE</option><option value="CDA">CDA</option><option value="SEC">SEC</option><option value="none">None</option></select></div>
+                <div><FieldLabel>President Name</FieldLabel><input type="text" name="president" value={newAssociation.president} onChange={handleInputChange} className={ds.input}/></div>
+                <div><FieldLabel>Contact Number</FieldLabel><input type="text" name="contact_number" value={newAssociation.contact_number} onChange={handleInputChange} className={ds.input}/></div>
+                <div><FieldLabel>Commodity</FieldLabel><input type="text" name="commodity" value={newAssociation.commodity} onChange={handleInputChange} className={ds.input}/></div>
+                <div><FieldLabel>Status</FieldLabel><select name="status" value={newAssociation.status.active==="P"?"Active":"Inactive"} onChange={handleInputChange} className={ds.select}><option value="Active">Active</option><option value="Inactive">Inactive</option></select></div>
+              </div>
+
+              <SectionLegend><FiUsers className="w-4 h-4 text-slate-400"/>Members Information</SectionLegend>
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-5 mb-8">
+                <div><FieldLabel>Male</FieldLabel><input type="number" name="members.male" value={newAssociation.members.male} onChange={handleInputChange} className={ds.input} min="0"/></div>
+                <div><FieldLabel>Female</FieldLabel><input type="number" name="members.female" value={newAssociation.members.female} onChange={handleInputChange} className={ds.input} min="0"/></div>
+                <div><FieldLabel>Senior Citizens</FieldLabel><input type="number" name="members.senior_citizen" value={newAssociation.members.senior_citizen} onChange={handleInputChange} className={ds.input} min="0"/></div>
+                <div><FieldLabel>Differently-abled</FieldLabel><input type="number" name="members.differently_abled" value={newAssociation.members.differently_abled} onChange={handleInputChange} className={ds.input} min="0"/></div>
+                <div><FieldLabel>Young Farmer</FieldLabel><input type="number" name="members.young_farmer" value={newAssociation.members.young_farmer} onChange={handleInputChange} className={ds.input} min="0"/></div>
+                <div><FieldLabel>IPs</FieldLabel><input type="number" name="members.ips" value={newAssociation.members.ips} onChange={handleInputChange} className={ds.input} min="0"/></div>
+              </div>
+
+              <SectionLegend><FiTag className="w-4 h-4 text-slate-400"/>Group Categories</SectionLegend>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
+                {[
+                  ["groupCategories.womenLed", newAssociation.groupCategories.womenLed, "Women-Led Group"],
+                  ["groupCategories.menLed", newAssociation.groupCategories.menLed, "Men-Led Group"],
+                  ["groupCategories.seniorCitizensGroup", newAssociation.groupCategories.seniorCitizensGroup, "Senior Citizens Group"],
+                  ["groupCategories.personsWithDisabilitiesGroup", newAssociation.groupCategories.personsWithDisabilitiesGroup, "Persons with Disabilities Group"],
+                  ["groupCategories.youngFarmersOrganization", newAssociation.groupCategories.youngFarmersOrganization, "Young Farmers Organization"],
+                  ["groupCategories.indigenousPeoplesAssociation", newAssociation.groupCategories.indigenousPeoplesAssociation, "Indigenous Peoples Association"],
+                ].map(([name, checked, label]) => (
+                  <label key={name} className="flex items-center gap-2.5 text-sm text-slate-700 px-3.5 py-2.5 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors">
+                    <input type="checkbox" name={name} checked={checked} onChange={handleInputChange} className={ds.checkbox} />
+                    <span className="font-medium">{label}</span>
+                  </label>
+                ))}
+              </div>
+
+              <SectionLegend><FiBriefcase className="w-4 h-4 text-slate-400"/>Intervention Information</SectionLegend>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div>
+                  <FieldLabel>Year</FieldLabel>
+                  <label className="flex items-center gap-2.5 h-11 px-3.5 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">
+                    <input type="checkbox" name="interventionReviewed" checked={newAssociation.interventionReviewed} onChange={handleInputChange} className={ds.checkbox} />
+                    <span className="text-sm font-medium text-slate-700">Yes</span>
+                  </label>
+                </div>
+                <div><FieldLabel>Specific Intervention</FieldLabel><input type="text" name="specificIntervention" value={newAssociation.specificIntervention} onChange={handleInputChange} className={ds.input}/></div>
+                <div><FieldLabel>Amount</FieldLabel><input type="text" name="interventionAmount" value={newAssociation.interventionAmount} onChange={handleInputChange} className={ds.input}/></div>
+              </div>
+            </div>
+            <div className={ds.modalFooter}>
+              <div className="flex justify-end gap-3">
+                <button onClick={()=>setIsEditModalOpen(false)} className={ds.btnSecondary}>Cancel</button>
+                <button onClick={handleUpdateAssociation} className={ds.btnPrimary}><FiSave className="text-base" />Update Association</button>
               </div>
             </div>
           </div>
@@ -1896,15 +2094,38 @@ export default function FullCoopAssociations() {
 
       {/* Delete Modal */}
       {isDeleteModalOpen && selectedAssociation && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-fadeIn">
-            <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-red-50 to-pink-50"><h3 className="text-2xl font-bold text-gray-900">Confirm Deletion</h3></div>
-            <div className="p-8"><div className="flex flex-col items-center justify-center mb-6"><div className="w-16 h-16 bg-gradient-to-br from-red-100 to-pink-100 rounded-full flex items-center justify-center mb-4"><FiTrash2 className="w-8 h-8 text-red-600" /></div><p className="text-center text-lg font-medium text-gray-800 mb-2">Are you sure you want to delete this association?</p><p className="text-center text-gray-600 mb-6">This action cannot be undone.</p><div className="bg-red-50 border border-red-200 rounded-2xl p-5 w-full mb-6"><p className="font-bold text-lg text-red-800 mb-1">{selectedAssociation.name}</p><div className="flex flex-col space-y-1 text-sm text-red-600"><p><span className="font-medium">Province:</span> {selectedAssociation.province}</p><p><span className="font-medium">Municipality:</span> {selectedAssociation.municipality}</p><p><span className="font-medium">President:</span> {selectedAssociation.president}</p><p><span className="font-medium">Total Members:</span> {selectedAssociation.totalMembers}</p></div></div><div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 w-full"><p className="text-sm text-yellow-800"><span className="font-bold">⚠️ Warning:</span> All data including member information will be permanently deleted from the system.</p></div></div></div>
-            <div className="px-8 py-6 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white flex justify-end space-x-4">
-                           <button onClick={() => setIsDeleteModalOpen(false)} className="px-6 py-3 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50">
+        <div className={ds.modalOverlay}>
+          <div className={`${ds.modalShell} max-w-md overflow-hidden`}>
+            <div className="px-7 py-5 border-b border-slate-100">
+              <h3 className="text-xl font-bold text-slate-900">Confirm Deletion</h3>
+            </div>
+            <div className="p-7">
+              <div className="flex flex-col items-center justify-center mb-6">
+                <div className="w-14 h-14 bg-rose-50 rounded-full flex items-center justify-center mb-4">
+                  <FiTrash2 className="w-6 h-6 text-rose-600" />
+                </div>
+                <p className="text-center text-base font-semibold text-slate-900 mb-1">Are you sure you want to delete this association?</p>
+                <p className="text-center text-sm text-slate-500 mb-6">This action cannot be undone.</p>
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-5 w-full mb-5">
+                  <p className="font-bold text-base text-rose-800 mb-2">{selectedAssociation.name}</p>
+                  <div className="flex flex-col space-y-1 text-sm text-rose-700/90">
+                    <p><span className="font-medium">Province:</span> {selectedAssociation.province}</p>
+                    <p><span className="font-medium">Municipality:</span> {selectedAssociation.municipality}</p>
+                    <p><span className="font-medium">President:</span> {selectedAssociation.president}</p>
+                    <p><span className="font-medium">Total Members:</span> {selectedAssociation.totalMembers}</p>
+                  </div>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 w-full flex gap-2.5">
+                  <FiAlertCircle className="text-amber-600 flex-shrink-0 mt-0.5 w-4 h-4" />
+                  <p className="text-sm text-amber-800"><span className="font-semibold">Warning:</span> All data including member information will be permanently deleted from the system.</p>
+                </div>
+              </div>
+            </div>
+            <div className={`${ds.modalFooter} flex justify-end gap-3`}>
+              <button onClick={() => setIsDeleteModalOpen(false)} className={ds.btnSecondary}>
                 Cancel
               </button>
-              <button onClick={handleDeleteAssociation} className="px-8 py-3 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-xl font-semibold hover:from-red-700 hover:to-pink-700 shadow-lg">
+              <button onClick={handleDeleteAssociation} className={ds.btnDanger}>
                 Delete Association
               </button>
             </div>
@@ -1914,104 +2135,78 @@ export default function FullCoopAssociations() {
 
       {/* View Modal */}
       {isViewModalOpen && selectedViewAssociation && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh]">
-            <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-between rounded-t-3xl sticky top-0 bg-white z-10">
+        <div className={ds.modalOverlay}>
+          <div className={`${ds.modalShell} max-w-4xl flex flex-col max-h-[90vh]`}>
+            <div className={ds.modalHeader}>
               <div>
-                <h3 className="text-2xl font-bold text-gray-900">Association Details</h3>
-                <p className="text-sm text-gray-600 mt-1">Full information of the selected association</p>
+                <h3 className="text-xl font-bold text-slate-900">Association Details</h3>
+                <p className="text-sm text-slate-500 mt-0.5">Full information of the selected association</p>
               </div>
-              <button onClick={() => setIsViewModalOpen(false)} className="p-2.5 hover:bg-white rounded-xl transition-all duration-200 hover:rotate-90">
-                <FiX className="w-6 h-6 text-gray-500" />
+              <button onClick={() => setIsViewModalOpen(false)} className={ds.btnIcon}>
+                <FiX className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-8 overflow-y-auto flex-1">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Association Name</label>
-                  <p className="text-gray-900 font-medium">{selectedViewAssociation.name || "—"}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Province</label>
-                  <p className="text-gray-900 font-medium">{selectedViewAssociation.province || "—"}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Municipality</label>
-                  <p className="text-gray-900 font-medium">{selectedViewAssociation.municipality || "—"}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Complete Address</label>
-                  <p className="text-gray-900 font-medium">{selectedViewAssociation.address || "—"}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Registration Type</label>
-                  <p className="text-gray-900 font-medium">{selectedViewAssociation.registration_type || "—"}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">President</label>
-                  <p className="text-gray-900 font-medium">{selectedViewAssociation.president || "—"}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Contact Number</label>
-                  <p className="text-gray-900 font-medium">{selectedViewAssociation.contact_number || "—"}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Commodity</label>
-                  <p className="text-gray-900 font-medium">{selectedViewAssociation.commodity || "—"}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Status</label>
-                  <p className="text-gray-900 font-medium">{selectedViewAssociation.status || "—"}</p>
-                </div>
+            <div className="p-7 overflow-y-auto flex-1">
+              <div className="flex items-center gap-2 mb-6">
+                <Badge tone={selectedViewAssociation.status === "Active" ? "success" : "danger"} icon={selectedViewAssociation.status === "Active" ? FiCheckCircle : FiXCircle}>
+                  {selectedViewAssociation.status || "—"}
+                </Badge>
+                {isReadOnlyRecord(selectedViewAssociation) && <Badge tone="neutral">Read-only source</Badge>}
               </div>
 
-              <div className="mb-8">
-                <h4 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-200">Members Breakdown</h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <div><label className="text-sm text-gray-600">Male Members:</label><p className="font-medium">{selectedViewAssociation.members?.male || "0"}</p></div>
-                  <div><label className="text-sm text-gray-600">Female Members:</label><p className="font-medium">{selectedViewAssociation.members?.female || "0"}</p></div>
-                  <div><label className="text-sm text-gray-600">Senior Citizens:</label><p className="font-medium">{selectedViewAssociation.members?.senior_citizen || "0"}</p></div>
-                  <div><label className="text-sm text-gray-600">Differently-abled:</label><p className="font-medium">{selectedViewAssociation.members?.differently_abled || "0"}</p></div>
-                  <div><label className="text-sm text-gray-600">Young Farmers:</label><p className="font-medium">{selectedViewAssociation.members?.young_farmer || "0"}</p></div>
-                  <div><label className="text-sm text-gray-600">IPs:</label><p className="font-medium">{selectedViewAssociation.members?.ips || "0"}</p></div>
-                </div>
+              <SectionLegend><FiHome className="w-4 h-4 text-slate-400"/>Basic Information</SectionLegend>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
+                <ViewField label="Association Name" value={selectedViewAssociation.name} />
+                <ViewField label="Province" value={selectedViewAssociation.province} />
+                <ViewField label="Municipality" value={selectedViewAssociation.municipality} />
+                <ViewField label="Complete Address" value={selectedViewAssociation.address} />
+                <ViewField label="Registration Type" value={selectedViewAssociation.registration_type} />
+                <ViewField label="President" value={selectedViewAssociation.president} />
+                <ViewField label="Contact Number" value={selectedViewAssociation.contact_number} />
+                <ViewField label="Commodity" value={selectedViewAssociation.commodity} />
               </div>
 
-              <div className="mb-8">
-                <h4 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-200">Group Categories</h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <div><label className="text-sm text-gray-600">Women-Led Group:</label><p className="font-medium">{selectedViewAssociation.groupCategories?.womenLed ? "Yes" : "No"}</p></div>
-                  <div><label className="text-sm text-gray-600">Men-Led Group:</label><p className="font-medium">{selectedViewAssociation.groupCategories?.menLed ? "Yes" : "No"}</p></div>
-                  <div><label className="text-sm text-gray-600">Senior Citizens Group:</label><p className="font-medium">{selectedViewAssociation.groupCategories?.seniorCitizensGroup ? "Yes" : "No"}</p></div>
-                  <div><label className="text-sm text-gray-600">Persons with Disabilities Group:</label><p className="font-medium">{selectedViewAssociation.groupCategories?.personsWithDisabilitiesGroup ? "Yes" : "No"}</p></div>
-                  <div><label className="text-sm text-gray-600">Young Farmers Organization:</label><p className="font-medium">{selectedViewAssociation.groupCategories?.youngFarmersOrganization ? "Yes" : "No"}</p></div>
-                  <div><label className="text-sm text-gray-600">Indigenous Peoples Association:</label><p className="font-medium">{selectedViewAssociation.groupCategories?.indigenousPeoplesAssociation ? "Yes" : "No"}</p></div>
-                </div>
+              <SectionLegend><FiUsers className="w-4 h-4 text-slate-400"/>Members Breakdown</SectionLegend>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-8">
+                <ViewField label="Male Members" value={selectedViewAssociation.members?.male || "0"} />
+                <ViewField label="Female Members" value={selectedViewAssociation.members?.female || "0"} />
+                <ViewField label="Senior Citizens" value={selectedViewAssociation.members?.senior_citizen || "0"} />
+                <ViewField label="Differently-abled" value={selectedViewAssociation.members?.differently_abled || "0"} />
+                <ViewField label="Young Farmers" value={selectedViewAssociation.members?.young_farmer || "0"} />
+                <ViewField label="IPs" value={selectedViewAssociation.members?.ips || "0"} />
               </div>
 
-              <div className="mb-8">
-                <h4 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-200">Intervention Information</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div><label className="text-sm text-gray-600">Year:</label><p className="font-medium">{selectedViewAssociation.interventionReviewed ? "Yes" : "No"}</p></div>
-                  <div><label className="text-sm text-gray-600">Specific Intervention:</label><p className="font-medium">{selectedViewAssociation.specificIntervention || "—"}</p></div>
-                  <div><label className="text-sm text-gray-600">Amount:</label><p className="font-medium">{selectedViewAssociation.interventionAmount || "—"}</p></div>
-                </div>
+              <SectionLegend><FiTag className="w-4 h-4 text-slate-400"/>Group Categories</SectionLegend>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-8">
+                <ViewField label="Women-Led Group" value={selectedViewAssociation.groupCategories?.womenLed ? "Yes" : "No"} />
+                <ViewField label="Men-Led Group" value={selectedViewAssociation.groupCategories?.menLed ? "Yes" : "No"} />
+                <ViewField label="Senior Citizens Group" value={selectedViewAssociation.groupCategories?.seniorCitizensGroup ? "Yes" : "No"} />
+                <ViewField label="Persons with Disabilities Group" value={selectedViewAssociation.groupCategories?.personsWithDisabilitiesGroup ? "Yes" : "No"} />
+                <ViewField label="Young Farmers Organization" value={selectedViewAssociation.groupCategories?.youngFarmersOrganization ? "Yes" : "No"} />
+                <ViewField label="Indigenous Peoples Association" value={selectedViewAssociation.groupCategories?.indigenousPeoplesAssociation ? "Yes" : "No"} />
+              </div>
+
+              <SectionLegend><FiBriefcase className="w-4 h-4 text-slate-400"/>Intervention Information</SectionLegend>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <ViewField label="Year" value={selectedViewAssociation.interventionReviewed ? "Yes" : "No"} />
+                <ViewField label="Specific Intervention" value={selectedViewAssociation.specificIntervention} />
+                <ViewField label="Amount" value={selectedViewAssociation.interventionAmount} />
               </div>
             </div>
 
-            <div className="px-8 py-6 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white rounded-b-3xl sticky bottom-0 bg-white">
-              <div className="flex justify-end space-x-4">
-                <button onClick={() => setIsViewModalOpen(false)} className="px-6 py-3.5 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-all duration-200 hover:border-gray-400">
+            <div className={ds.modalFooter}>
+              <div className="flex justify-end gap-3">
+                <button onClick={() => setIsViewModalOpen(false)} className={ds.btnSecondary}>
                   Close
                 </button>
                 {!isReadOnlyRecord(selectedViewAssociation) && (
                   <>
-                    <button onClick={handleEditFromView} className="px-6 py-3.5 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-cyan-700 transition-all duration-200 shadow-lg hover:shadow-xl flex items-center">
-                      <FiEdit2 className="mr-2 text-lg" /> Edit
+                    <button onClick={handleEditFromView} className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 shadow-sm transition-all duration-150">
+                      <FiEdit2 className="text-base" /> Edit
                     </button>
-                    <button onClick={handleDeleteFromView} className="px-6 py-3.5 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-xl font-semibold hover:from-red-700 hover:to-pink-700 transition-all duration-200 shadow-lg hover:shadow-xl flex items-center">
-                      <FiTrash2 className="mr-2 text-lg" /> Delete
+                    <button onClick={handleDeleteFromView} className={ds.btnDanger}>
+                      <FiTrash2 className="text-base" /> Delete
                     </button>
                   </>
                 )}
@@ -2022,8 +2217,10 @@ export default function FullCoopAssociations() {
       )}
 
       <style jsx>{`
-        @keyframes fadeIn { from { opacity:0; transform:scale(0.95); } to { opacity:1; transform:scale(1); } }
-        .animate-fadeIn { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+        @keyframes slideUp { from { opacity:0; transform:translateY(8px) scale(0.98); } to { opacity:1; transform:translateY(0) scale(1); } }
+        .animate-fadeIn { animation: fadeIn 0.15s ease-out; }
+        .animate-slideUp { animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
         .animate-spin { animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform:rotate(0deg); } 100% { transform:rotate(360deg); } }
       `}</style>
